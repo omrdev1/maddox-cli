@@ -1,4 +1,4 @@
-import { extractFromContent, type RawUsage } from "./scan.js";
+import { extractFromContent, type RawUsage } from "./extract.js";
 
 // Only ever follow relative/absolute-path stylesheet links resolved
 // against the page's own origin — never a third-party CDN's CSS, since

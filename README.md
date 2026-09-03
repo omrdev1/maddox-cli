@@ -110,6 +110,18 @@ groupByRoute(findings); // [{ route, findings }, ...], real routes first, shared
 
 Only `page.*`/`layout.*` files directly under an `app/` (or `src/app/`) directory get a real route — this deliberately does not trace the import graph to attribute a shared component to the page(s) that render it, since a component used by five different pages has no single "real" route, and guessing one would misattribute drift. Everything else lands in a `"Shared (non-route files)"` bucket instead. A layout keeps its route group in its own label (`/(auth) (layout)`) even though a page at the same URL doesn't, since two different layouts can legitimately wrap the same URL from different subtrees.
 
+### Using this from a React client component
+
+`import ... from "maddox-engine"` pulls in everything, including `scan.ts`/`groundTruth.ts`/`tokensStudio.ts`/`applyFixes.ts` — all of which read the filesystem (`node:fs`, `node:path`). A bundler building a browser/client bundle (Next.js's `"use client"`, Vite, etc.) can't resolve those, and the build fails even if the client code never actually calls a Node-dependent function — a bundler loads a module's own top-level imports regardless of which export is used.
+
+If you're grouping or diffing findings inside a client component (e.g. rendering `fileToRoute`/`groupByRoute` output, or re-running `diffUsages` against data already fetched server-side), import from the `/client` subpath instead — it only re-exports modules with zero `node:*` imports anywhere in their own graph:
+
+```ts
+import { fileToRoute, groupByRoute, diffUsages, healthScore } from "maddox-engine/client";
+```
+
+`audit`/`auditUrl`/`loadGroundTruth`/anything that reads a file or fetches a URL still needs the package root, and stays server-side (an API route, a server component, a build script) — `/client` only has the pure data-transformation half.
+
 ## Using in CI
 
 This repo is also a GitHub Action — `omrdev1/maddox-cli` — that runs a scan, posts the markdown report as a PR comment (updating the same comment on later pushes rather than piling up new ones), and optionally fails the build via `fail-below`.

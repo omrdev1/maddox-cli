@@ -1,77 +1,15 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
+import { extractFromContent, type RawUsage, type ScannedFile } from "./extract.js";
 
-export interface RawUsage {
-  file: string;
-  line: number;
-  kind: "color" | "spacing" | "font-size" | "motion";
-  rawValue: string;
-}
-
-const HEX_RE = /#([a-f0-9]{3}|[a-f0-9]{6})\b/gi;
-const FONT_SIZE_RE = /font-size:\s*([\d.]+(?:px|rem|em))/gi;
-const MOTION_DURATION_RE = /duration:\s*([\d.]+)/gi;
-const MOTION_EASE_RE = /ease:\s*['"]([\w-]+)['"]/gi;
-
-function lineNumberAt(content: string, index: number): number {
-  return content.slice(0, index).split("\n").length;
-}
-
-/**
- * Extracts raw color/font-size/motion literals from a single blob of
- * content. Exported directly (not just via scanSource's filesystem walk)
- * so callers with in-memory content — e.g. fetched HTML/CSS from a public
- * URL, with no local checkout — can run the same extraction.
- */
-export function extractFromContent(file: string, content: string): RawUsage[] {
-  const usages: RawUsage[] = [];
-
-  for (const re of [HEX_RE]) {
-    re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(content)) !== null) {
-      usages.push({
-        file,
-        line: lineNumberAt(content, m.index),
-        kind: "color",
-        rawValue: m[0].toLowerCase(),
-      });
-    }
-  }
-
-  FONT_SIZE_RE.lastIndex = 0;
-  let m: RegExpExecArray | null;
-  while ((m = FONT_SIZE_RE.exec(content)) !== null) {
-    usages.push({
-      file,
-      line: lineNumberAt(content, m.index),
-      kind: "font-size",
-      rawValue: m[1],
-    });
-  }
-
-  MOTION_DURATION_RE.lastIndex = 0;
-  while ((m = MOTION_DURATION_RE.exec(content)) !== null) {
-    usages.push({
-      file,
-      line: lineNumberAt(content, m.index),
-      kind: "motion",
-      rawValue: m[1],
-    });
-  }
-
-  MOTION_EASE_RE.lastIndex = 0;
-  while ((m = MOTION_EASE_RE.exec(content)) !== null) {
-    usages.push({
-      file,
-      line: lineNumberAt(content, m.index),
-      kind: "motion",
-      rawValue: m[1],
-    });
-  }
-
-  return usages;
-}
+// Deliberately NOT re-exporting RawUsage/ScannedFile/extractFromContent
+// here — anything that needs those and must stay browser-safe (crawl.ts,
+// diff.ts, or a future client component) should import them from
+// ./extract.js directly, not through this file. This file's own
+// node:fs/node:path imports are unconditional at module scope, so ANY
+// import from scan.ts — even just for a re-exported browser-safe name —
+// pulls those into a webpack client bundle and breaks it, exactly the
+// bug this split exists to prevent.
 
 const SKIP_DIRS = new Set(["node_modules", ".next", ".git", ".turbo", "dist"]);
 const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".css"]);
@@ -86,11 +24,6 @@ function walkDir(dir: string, out: string[]): void {
       if (SCAN_EXTENSIONS.has(ext)) out.push(join(dir, entry.name));
     }
   }
-}
-
-export interface ScannedFile {
-  file: string; // relative to rootDir
-  content: string;
 }
 
 /**

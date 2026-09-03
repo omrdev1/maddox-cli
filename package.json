@@ -4,6 +4,18 @@
   "description": "Scans source code or a live deployed page for design-token, motion, and component-state drift against your own design system — the same engine behind Maddox Engine's CI checks.",
   "license": "MIT",
   "type": "module",
+  "main": "./src/core.ts",
+  "types": "./src/core.ts",
+  "exports": {
+    ".": {
+      "types": "./src/core.ts",
+      "default": "./src/core.ts"
+    },
+    "./client": {
+      "types": "./src/client.ts",
+      "default": "./src/client.ts"
+    }
+  },
   "bin": {
     "maddox": "./src/cli.ts"
   },

@@ -1,4 +1,4 @@
-import type { ScannedFile } from "./scan.js";
+import type { ScannedFile } from "./extract.js";
 import type { Finding, StateContract } from "./types.js";
 
 // Heuristic identifiers that count as "this state is handled" when they

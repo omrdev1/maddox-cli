@@ -1,4 +1,4 @@
-import type { RawUsage } from "./scan.js";
+import type { RawUsage } from "./extract.js";
 import type { Finding, GroundTruth } from "./types.js";
 
 const NEAR_MISS_RGB_THRESHOLD = 25;

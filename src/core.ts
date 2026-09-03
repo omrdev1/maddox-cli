@@ -1,4 +1,5 @@
 export * from "./types.js";
+export * from "./extract.js";
 export * from "./groundTruth.js";
 export * from "./tokensStudio.js";
 export * from "./scan.js";
