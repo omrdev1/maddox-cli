@@ -49,9 +49,31 @@ Ground truth is explicit — nothing is inferred about which states a component 
 
 `match` counts fully, `near-miss` counts half (it drifted, but is still recognizably close to a real token), `unrecognized` and a missing required state count for nothing. A scan with zero checks scores 100.
 
-## CI
+## Using in CI
 
-A GitHub Action wrapping this CLI — with PR-comment reporting and the `--fail-below` gate wired in — is available as part of [Maddox Engine](https://www.maddoxengine.com), along with a hosted dashboard for scan history, drift trends, and team usage across projects.
+This repo is also a GitHub Action — `omrdev1/maddox-cli` — that runs a scan, posts the markdown report as a PR comment (updating the same comment on later pushes rather than piling up new ones), and optionally fails the build via `fail-below`.
+
+```yaml
+- uses: actions/checkout@v4
+- uses: omrdev1/maddox-cli@main
+  with:
+    target-dir: src
+    theme-css: src/app/globals.css
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+    fail-below: "80"
+```
+
+Inputs:
+
+- `target-dir` *(required)* — directory to scan
+- `theme-css` *(required)* — path to the CSS file containing the `@theme` block
+- `motion-tokens` — path to a motion-tokens JSON file
+- `states` — path to a state-contract JSON file
+- `github-token` *(required)* — for posting the PR comment, usually `${{ secrets.GITHUB_TOKEN }}`
+- `fail-below` — fail the build below this health score; omit for comment-only
+- `api-key` / `api-url` — optional, upload results to a [Maddox Engine](https://www.maddoxengine.com) dashboard account for scan history and drift trends across projects (a separate hosted product, not required to use the Action itself)
+
+Pin `@main` to a specific commit SHA if you want reproducible CI runs immune to changes on this branch.
 
 ## License
 

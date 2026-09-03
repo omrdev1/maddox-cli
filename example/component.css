@@ -1,0 +1,13 @@
+/* A minimal real target for the self-check workflow — deliberately
+   mixes a token match, a near-miss, and a hard drift so the example
+   Action run and its PR comment have real, non-empty findings. */
+.button {
+  color: #111111;
+  background: #3b82f6;
+  font-size: 14px;
+}
+
+.card {
+  background: #fafafb;
+  padding: 16px;
+}
