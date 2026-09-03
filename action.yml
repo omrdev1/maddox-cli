@@ -5,8 +5,8 @@ branding:
   color: "orange"
 inputs:
   target-dir:
-    description: "Directory to scan for token/motion/state usages"
-    required: true
+    description: "Directory to scan for token/motion/state usages. Required unless url is set."
+    required: false
   theme-css:
     description: "Path to the CSS file containing the @theme block (ground-truth tokens)"
     required: true
@@ -14,10 +14,13 @@ inputs:
     description: "Optional path to a JSON file of motion tokens (e.g. a vendored copy of your motionTokens export)"
     required: false
   states:
-    description: "Optional path to a state-contract JSON file (see README)"
+    description: "Optional path to a state-contract JSON file (see README). Has no effect when url is set — state-completeness is a source-code check."
     required: false
   tokens-studio:
     description: "Optional path to a Tokens Studio / W3C Design Tokens JSON export, merged with (and taking precedence over) theme-css"
+    required: false
+  url:
+    description: "Optional deployed page URL to scan instead of local source — fetches the page's rendered HTML plus its same-origin stylesheets. When set, target-dir is not required."
     required: false
   github-token:
     description: "GitHub token for posting PR comments"
@@ -62,6 +65,20 @@ runs:
           TOKENS_STUDIO_FLAG="--tokens-studio ${{ inputs.tokens-studio }}"
         fi
 
+        URL_FLAG=""
+        if [ -n "${{ inputs.url }}" ]; then
+          URL_FLAG="--url ${{ inputs.url }}"
+        fi
+
+        # target-dir is a required positional arg in the CLI's own arg
+        # parsing even in --url mode (only its *value* is ignored there) —
+        # pass a harmless placeholder so url-only usage doesn't also have
+        # to set target-dir just to satisfy argv[2].
+        TARGET_DIR="${{ inputs.target-dir }}"
+        if [ -z "$TARGET_DIR" ]; then
+          TARGET_DIR="-"
+        fi
+
         # Run once, capture both the markdown report (for the PR comment)
         # and the exit code from --fail-below (if set) without letting a
         # non-zero exit kill this step — the comment must still post
@@ -69,11 +86,12 @@ runs:
         # a red check with no explanation of what drifted.
         set +e
         npx tsx "${{ github.action_path }}/src/cli.ts" \
-          "${{ inputs.target-dir }}" \
+          "$TARGET_DIR" \
           "${{ inputs.theme-css }}" \
           $MOTION_FLAG \
           $STATES_FLAG \
           $TOKENS_STUDIO_FLAG \
+          $URL_FLAG \
           --format markdown \
           ${{ inputs.fail-below && format('--fail-below {0}', inputs.fail-below) || '' }} \
           > maddox-report.md 2> maddox-scan.log

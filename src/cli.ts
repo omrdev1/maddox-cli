@@ -1,7 +1,7 @@
 #!/usr/bin/env -S npx tsx
 
 import { readFileSync } from "node:fs";
-import { audit, healthScore, loadGroundTruth, loadStateContract } from "./core.js";
+import { audit, auditUrl, healthScore, loadGroundTruth, loadStateContract } from "./core.js";
 import { summarize, toJson, toMarkdown, toText, type ScanSummary } from "./format.js";
 
 async function uploadResult(apiUrl: string, apiKey: string, projectName: string, summary: ScanSummary) {
@@ -36,18 +36,23 @@ function flagValue(name: string): string | undefined {
 async function main() {
   const targetDir = process.argv[2];
   const themeCssPath = process.argv[3];
+  const url = flagValue("--url");
 
-  if (!targetDir || !themeCssPath) {
+  if (!themeCssPath || (!targetDir && !url)) {
     console.error(
       "Usage: pnpm scan <target-source-dir> <path-to-globals.css-with-@theme-block> " +
         "[--project <name>] [--motion <path-to-motion-tokens.json>] " +
         "[--states <path-to-state-contract.json>] [--format text|json|markdown] " +
-        "[--fail-below <0-100>] [--tokens-studio <path-to-tokens-studio-export.json>]"
+        "[--fail-below <0-100>] [--tokens-studio <path-to-tokens-studio-export.json>] " +
+        "[--url <live-page-url>]\n" +
+        "  --url scans a deployed page's rendered HTML/CSS instead of local source " +
+        "(pass a placeholder for <target-source-dir>, e.g. '-', when using --url alone). " +
+        "--states has no effect in --url mode: state-completeness is a source-code check."
     );
     process.exit(1);
   }
 
-  const projectName = flagValue("--project") ?? targetDir.split("/").pop() ?? "unnamed-project";
+  const projectName = flagValue("--project") ?? (url ? new URL(url).hostname : targetDir.split("/").pop()) ?? "unnamed-project";
   const format = flagValue("--format") ?? "text";
 
   // Motion tokens are an optional external JSON file (a plain object like
@@ -64,7 +69,8 @@ async function main() {
 
   const tokensStudioPath = flagValue("--tokens-studio");
   const groundTruth = loadGroundTruth(themeCssPath, motionTokens, tokensStudioPath);
-  const result = await audit(targetDir, groundTruth, stateContract);
+
+  const result = url ? await auditUrl(url, groundTruth) : await audit(targetDir, groundTruth, stateContract);
   const summary = summarize(result.findings, result.filesScanned);
 
   if (format === "json") {
