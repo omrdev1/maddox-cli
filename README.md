@@ -25,6 +25,7 @@ Options:
 - `--states <path>` — path to a state-contract JSON file (see below). No effect in `--url` mode.
 - `--tokens-studio <path>` — path to a Tokens Studio / W3C Design Tokens JSON export (see below); merged with, and taking precedence over, `@theme` on any path both define
 - `--url <page-url>` — scan a deployed page instead of local source (see below); pass a placeholder like `-` for `<target-source-dir>` when using this alone
+- `--apply-fixes` — write near-miss color/font-size/spacing suggestions back into source files (see below); not available with `--url`
 - `--format text|json|markdown` — output format (default: `text`)
 - `--fail-below <0-100>` — exit non-zero if the drift health score falls below this threshold; omit to never fail
 
@@ -68,7 +69,22 @@ Third-party stylesheets (a different origin than the page itself, e.g. a font CD
 
 ### Suggested fixes
 
-Every `near-miss` finding with a resolved nearest token gets a `suggestion` — the concrete replacement text (`var(--token-name)` for a CSS value, or `motionTokens.path.to.value` for a motion token). It's advisory text for a human to apply, not an automatic edit: nothing in this package rewrites your source files. An `unrecognized` value with no close match, and a `missing`-state finding, never get one — there's no safe mechanical fix for either.
+Every `near-miss` finding with a resolved nearest token gets a `suggestion` — the concrete replacement text (`var(--token-name)` for a CSS value, or `motionTokens.path.to.value` for a motion token). By default it's advisory text for you to apply yourself; pass `--apply-fixes` to write it back into the file. An `unrecognized` value with no close match, and a `missing`-state finding, never get a suggestion — there's no safe mechanical fix for either.
+
+### Applying fixes automatically
+
+```bash
+npx maddox-engine ./src ./src/app/globals.css --apply-fixes
+```
+
+`--apply-fixes` writes every `color`/`font-size`/`spacing` near-miss suggestion straight into the source file it was found in, replacing the exact literal with `var(--token-name)`. It's scoped deliberately narrow:
+
+- **Motion suggestions are never applied.** `motionTokens.path.to.value` assumes an import named `motionTokens` exists in that file's scope — there's no way to verify that per-file, and applying it blind could silently break the build. Motion findings always stay advisory-only.
+- **State findings never had a suggestion to apply.**
+- If a finding's line no longer contains its reported value (the file changed since the scan ran), it's skipped rather than guessed at.
+- Not available with `--url` — a fetched page has no local file to write to.
+
+This is a real edit to your working tree, not a dry run — review the diff (`git diff`) before committing, same as you would any other automated change.
 
 ### Health score
 

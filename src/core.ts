@@ -7,6 +7,7 @@ export * from "./diff.js";
 export * from "./stateCheck.js";
 export * from "./healthScore.js";
 export * from "./suggestFix.js";
+export * from "./applyFixes.js";
 
 import { scanSource, scanFiles } from "./scan.js";
 import { crawlUrl } from "./crawl.js";

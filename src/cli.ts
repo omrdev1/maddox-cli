@@ -1,7 +1,7 @@
 #!/usr/bin/env -S npx tsx
 
 import { readFileSync } from "node:fs";
-import { audit, auditUrl, healthScore, loadGroundTruth, loadStateContract } from "./core.js";
+import { applyFixes, audit, auditUrl, healthScore, loadGroundTruth, loadStateContract } from "./core.js";
 import { summarize, toJson, toMarkdown, toText, type ScanSummary } from "./format.js";
 
 async function uploadResult(apiUrl: string, apiKey: string, projectName: string, summary: ScanSummary) {
@@ -44,10 +44,13 @@ async function main() {
         "[--project <name>] [--motion <path-to-motion-tokens.json>] " +
         "[--states <path-to-state-contract.json>] [--format text|json|markdown] " +
         "[--fail-below <0-100>] [--tokens-studio <path-to-tokens-studio-export.json>] " +
-        "[--url <live-page-url>]\n" +
+        "[--url <live-page-url>] [--apply-fixes]\n" +
         "  --url scans a deployed page's rendered HTML/CSS instead of local source " +
         "(pass a placeholder for <target-source-dir>, e.g. '-', when using --url alone). " +
-        "--states has no effect in --url mode: state-completeness is a source-code check."
+        "--states has no effect in --url mode: state-completeness is a source-code check.\n" +
+        "  --apply-fixes writes near-miss color/font-size/spacing suggestions back into " +
+        "source files (color/font-size/spacing only — motion and state findings are " +
+        "never auto-applied). Not available with --url, which has no source to write to."
     );
     process.exit(1);
   }
@@ -72,6 +75,25 @@ async function main() {
 
   const result = url ? await auditUrl(url, groundTruth) : await audit(targetDir, groundTruth, stateContract);
   const summary = summarize(result.findings, result.filesScanned);
+
+  const applyFixesFlag = process.argv.includes("--apply-fixes");
+  if (applyFixesFlag) {
+    if (url) {
+      console.error("\n--apply-fixes has no effect with --url: there is no local source to write to.");
+    } else {
+      const { applied, skipped } = applyFixes(targetDir, result.findings);
+      if (applied.length > 0) {
+        console.error(`\nApplied ${applied.length} fix${applied.length === 1 ? "" : "es"}:`);
+        for (const fix of applied) {
+          console.error(`  ${fix.file}:${fix.line}  ${fix.rawValue} → ${fix.suggestion}`);
+        }
+      }
+      const motionOrStateSkipped = skipped.filter((f) => f.kind === "motion" || f.kind === "state").length;
+      if (motionOrStateSkipped > 0) {
+        console.error(`\n${motionOrStateSkipped} motion/state finding${motionOrStateSkipped === 1 ? "" : "s"} skipped — not auto-applied (see usage).`);
+      }
+    }
+  }
 
   if (format === "json") {
     console.log(toJson(summary));
