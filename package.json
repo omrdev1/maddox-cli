@@ -1,0 +1,38 @@
+{
+  "name": "maddox-engine",
+  "version": "0.1.0",
+  "description": "Scans source code for design-token, motion, and component-state drift against your own design system — the same engine behind Maddox Engine's CI checks.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "maddox": "./src/cli.ts"
+  },
+  "files": [
+    "src",
+    "fixtures"
+  ],
+  "keywords": [
+    "design-system",
+    "design-tokens",
+    "drift",
+    "css",
+    "cli",
+    "ci"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/omrdev1/maddox-cli.git"
+  },
+  "homepage": "https://www.maddoxengine.com",
+  "scripts": {
+    "scan": "tsx src/cli.ts",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0",
+    "@types/node": "^20.0.0"
+  }
+}
