@@ -90,6 +90,26 @@ This is a real edit to your working tree, not a dry run — review the diff (`gi
 
 `match` counts fully, `near-miss` counts half (it drifted, but is still recognizably close to a real token), `unrecognized` and a missing required state count for nothing. A scan with zero checks scores 100.
 
+## Programmatic use: route mapping
+
+The CLI's own text/markdown/JSON output stays a flat file:line list — the right shape for a PR comment or a CI log. If you're building your own dashboard or report on top of this package, `fileToRoute(file)` and `groupByRoute(findings)` are also exported for grouping findings by the actual Next.js App Router route a file belongs to, rather than its raw path:
+
+```ts
+import { audit, loadGroundTruth, fileToRoute, groupByRoute } from "maddox-engine";
+
+const groundTruth = loadGroundTruth("./src/app/globals.css", {});
+const { findings } = await audit("./src", groundTruth);
+
+fileToRoute("app/dashboard/page.tsx"); // "/dashboard"
+fileToRoute("app/(auth)/login/page.tsx"); // "/login" — route groups are invisible in the real URL
+fileToRoute("app/work/[id]/page.tsx"); // "/work/[id]" — dynamic segments kept as Next.js represents them
+fileToRoute("components/Button.tsx"); // "Shared (non-route files)"
+
+groupByRoute(findings); // [{ route, findings }, ...], real routes first, shared bucket last
+```
+
+Only `page.*`/`layout.*` files directly under an `app/` (or `src/app/`) directory get a real route — this deliberately does not trace the import graph to attribute a shared component to the page(s) that render it, since a component used by five different pages has no single "real" route, and guessing one would misattribute drift. Everything else lands in a `"Shared (non-route files)"` bucket instead. A layout keeps its route group in its own label (`/(auth) (layout)`) even though a page at the same URL doesn't, since two different layouts can legitimately wrap the same URL from different subtrees.
+
 ## Using in CI
 
 This repo is also a GitHub Action — `omrdev1/maddox-cli` — that runs a scan, posts the markdown report as a PR comment (updating the same comment on later pushes rather than piling up new ones), and optionally fails the build via `fail-below`.
