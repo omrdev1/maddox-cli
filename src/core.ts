@@ -1,13 +1,16 @@
 export * from "./types.js";
 export * from "./groundTruth.js";
+export * from "./tokensStudio.js";
 export * from "./scan.js";
 export * from "./diff.js";
 export * from "./stateCheck.js";
 export * from "./healthScore.js";
+export * from "./suggestFix.js";
 
 import { scanSource, scanFiles } from "./scan.js";
 import { diffUsages } from "./diff.js";
 import { checkStates } from "./stateCheck.js";
+import { attachSuggestions } from "./suggestFix.js";
 import type { GroundTruth, ScanResult, StateContract } from "./types.js";
 
 export async function audit(
@@ -24,6 +27,8 @@ export async function audit(
     findings.push(...checkStates(files, stateContract));
     for (const f of files) scannedFiles.add(f.file);
   }
+
+  attachSuggestions(findings);
 
   return { findings, filesScanned: scannedFiles.size };
 }

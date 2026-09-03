@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { loadTokensStudioFile } from "./tokensStudio.js";
 import type { GroundTruth, MotionToken, StateContract, TokenMap } from "./types.js";
 
 /**
@@ -52,10 +53,21 @@ export function loadStateContract(path: string): StateContract {
 
 export function loadGroundTruth(
   themeCssPath: string,
-  motionTokensObj: Record<string, unknown>
+  motionTokensObj: Record<string, unknown>,
+  tokensStudioPath?: string
 ): GroundTruth {
+  // When both a @theme CSS file and a Tokens Studio export are given, the
+  // Tokens Studio export (the design tool's source of truth) wins on any
+  // path both define — the CSS file is usually the codegen'd output of
+  // the same tokens, so a conflict means the CSS is stale, not that the
+  // design tokens are wrong.
+  const tokens = {
+    ...parseThemeTokens(themeCssPath),
+    ...(tokensStudioPath ? loadTokensStudioFile(tokensStudioPath) : {}),
+  };
+
   return {
-    tokens: parseThemeTokens(themeCssPath),
+    tokens,
     motion: flattenMotionTokens(motionTokensObj),
   };
 }

@@ -16,6 +16,9 @@ inputs:
   states:
     description: "Optional path to a state-contract JSON file (see README)"
     required: false
+  tokens-studio:
+    description: "Optional path to a Tokens Studio / W3C Design Tokens JSON export, merged with (and taking precedence over) theme-css"
+    required: false
   github-token:
     description: "GitHub token for posting PR comments"
     required: true
@@ -54,6 +57,11 @@ runs:
           STATES_FLAG="--states ${{ inputs.states }}"
         fi
 
+        TOKENS_STUDIO_FLAG=""
+        if [ -n "${{ inputs.tokens-studio }}" ]; then
+          TOKENS_STUDIO_FLAG="--tokens-studio ${{ inputs.tokens-studio }}"
+        fi
+
         # Run once, capture both the markdown report (for the PR comment)
         # and the exit code from --fail-below (if set) without letting a
         # non-zero exit kill this step — the comment must still post
@@ -65,6 +73,7 @@ runs:
           "${{ inputs.theme-css }}" \
           $MOTION_FLAG \
           $STATES_FLAG \
+          $TOKENS_STUDIO_FLAG \
           --format markdown \
           ${{ inputs.fail-below && format('--fail-below {0}', inputs.fail-below) || '' }} \
           > maddox-report.md 2> maddox-scan.log

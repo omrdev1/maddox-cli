@@ -1,6 +1,6 @@
 {
   "name": "maddox-engine",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Scans source code for design-token, motion, and component-state drift against your own design system — the same engine behind Maddox Engine's CI checks.",
   "license": "MIT",
   "type": "module",

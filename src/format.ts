@@ -30,7 +30,7 @@ export function toText(summary: ScanSummary): string {
     lines.push(
       `${f.file}:${f.line}  [${f.kind}] ${f.rawValue}  → ${f.severity}${
         f.nearestToken ? ` (nearest: ${f.nearestToken})` : ""
-      }`
+      }${f.suggestion ? `  fix: ${f.suggestion}` : ""}`
     );
   }
   return lines.join("\n");
@@ -60,10 +60,10 @@ export function toMarkdown(summary: ScanSummary): string {
     return lines.join("\n");
   }
 
-  lines.push("<details><summary>Findings</summary>", "", "| Location | Kind | Value | Severity | Nearest token |", "|---|---|---|---|---|");
+  lines.push("<details><summary>Findings</summary>", "", "| Location | Kind | Value | Severity | Nearest token | Suggested fix |", "|---|---|---|---|---|---|");
   for (const f of nonMatch.slice(0, 100)) {
     lines.push(
-      `| \`${f.file}:${f.line}\` | ${f.kind} | \`${f.rawValue}\` | ${f.severity} | ${f.nearestToken ? `\`${f.nearestToken}\`` : "—"} |`
+      `| \`${f.file}:${f.line}\` | ${f.kind} | \`${f.rawValue}\` | ${f.severity} | ${f.nearestToken ? `\`${f.nearestToken}\`` : "—"} | ${f.suggestion ? `\`${f.suggestion}\`` : "—"} |`
     );
   }
   if (nonMatch.length > 100) {

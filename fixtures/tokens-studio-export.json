@@ -1,0 +1,30 @@
+{
+  "global": {
+    "color": {
+      "brand": {
+        "500": { "value": "#4f46e5", "type": "color" },
+        "600": { "value": "{color.brand.500}", "type": "color" }
+      },
+      "neutral": {
+        "900": { "value": "#0a0a0b", "type": "color" }
+      }
+    },
+    "spacing": {
+      "sm": { "value": "8px", "type": "spacing" },
+      "md": { "value": "16px", "type": "spacing" }
+    },
+    "typography": {
+      "heading": {
+        "value": { "fontFamily": "Inter", "fontSize": "32px" },
+        "type": "typography"
+      }
+    }
+  },
+  "dark": {
+    "color": {
+      "neutral": {
+        "900": { "value": "#000000", "type": "color" }
+      }
+    }
+  }
+}

@@ -42,7 +42,7 @@ async function main() {
       "Usage: pnpm scan <target-source-dir> <path-to-globals.css-with-@theme-block> " +
         "[--project <name>] [--motion <path-to-motion-tokens.json>] " +
         "[--states <path-to-state-contract.json>] [--format text|json|markdown] " +
-        "[--fail-below <0-100>]"
+        "[--fail-below <0-100>] [--tokens-studio <path-to-tokens-studio-export.json>]"
     );
     process.exit(1);
   }
@@ -62,7 +62,8 @@ async function main() {
   const statesPath = flagValue("--states");
   const stateContract = statesPath ? loadStateContract(statesPath) : undefined;
 
-  const groundTruth = loadGroundTruth(themeCssPath, motionTokens);
+  const tokensStudioPath = flagValue("--tokens-studio");
+  const groundTruth = loadGroundTruth(themeCssPath, motionTokens, tokensStudioPath);
   const result = await audit(targetDir, groundTruth, stateContract);
   const summary = summarize(result.findings, result.filesScanned);
 
