@@ -1,7 +1,16 @@
 #!/usr/bin/env -S npx tsx
 
 import { readFileSync } from "node:fs";
-import { applyFixes, audit, auditUrl, healthScore, loadGroundTruth, loadStateContract } from "./core.js";
+import {
+  applyFixes,
+  audit,
+  auditUrl,
+  FigmaVariablesUnavailableError,
+  healthScore,
+  loadGroundTruth,
+  loadGroundTruthWithFigma,
+  loadStateContract,
+} from "./core.js";
 import { summarize, toJson, toMarkdown, toText, type ScanSummary } from "./format.js";
 
 async function uploadResult(apiUrl: string, apiKey: string, projectName: string, summary: ScanSummary) {
@@ -44,13 +53,17 @@ async function main() {
         "[--project <name>] [--motion <path-to-motion-tokens.json>] " +
         "[--states <path-to-state-contract.json>] [--format text|json|markdown] " +
         "[--fail-below <0-100>] [--tokens-studio <path-to-tokens-studio-export.json>] " +
-        "[--url <live-page-url>] [--apply-fixes]\n" +
+        "[--url <live-page-url>] [--apply-fixes] [--figma-file <file-key>]\n" +
         "  --url scans a deployed page's rendered HTML/CSS instead of local source " +
         "(pass a placeholder for <target-source-dir>, e.g. '-', when using --url alone). " +
         "--states has no effect in --url mode: state-completeness is a source-code check.\n" +
         "  --apply-fixes writes near-miss color/font-size/spacing suggestions back into " +
         "source files (color/font-size/spacing only — motion and state findings are " +
-        "never auto-applied). Not available with --url, which has no source to write to."
+        "never auto-applied). Not available with --url, which has no source to write to.\n" +
+        "  --figma-file <file-key> pulls color/spacing tokens from a Figma file's " +
+        "Variables (the file key from its URL). Requires an Enterprise Figma plan and " +
+        "MADDOX_FIGMA_TOKEN set to a personal access token (or MADDOX_FIGMA_OAUTH_TOKEN " +
+        "for an OAuth2 token) — never pass the token as a CLI flag."
     );
     process.exit(1);
   }
@@ -71,7 +84,35 @@ async function main() {
   const stateContract = statesPath ? loadStateContract(statesPath) : undefined;
 
   const tokensStudioPath = flagValue("--tokens-studio");
-  const groundTruth = loadGroundTruth(themeCssPath, motionTokens, tokensStudioPath);
+
+  const figmaFileKey = flagValue("--figma-file");
+  let groundTruth;
+  if (figmaFileKey) {
+    const patToken = process.env.MADDOX_FIGMA_TOKEN;
+    const oauthToken = process.env.MADDOX_FIGMA_OAUTH_TOKEN;
+    if (!patToken && !oauthToken) {
+      console.error(
+        "\n--figma-file requires MADDOX_FIGMA_TOKEN (a personal access token) or " +
+          "MADDOX_FIGMA_OAUTH_TOKEN (an OAuth2 access token) to be set."
+      );
+      process.exit(1);
+    }
+    try {
+      groundTruth = await loadGroundTruthWithFigma(themeCssPath, motionTokens, tokensStudioPath, {
+        fileKey: figmaFileKey,
+        token: (patToken ?? oauthToken)!,
+        authMode: patToken ? "pat" : "oauth",
+      });
+    } catch (err) {
+      if (err instanceof FigmaVariablesUnavailableError) {
+        console.error(`\n${err.message}`);
+        process.exit(1);
+      }
+      throw err;
+    }
+  } else {
+    groundTruth = loadGroundTruth(themeCssPath, motionTokens, tokensStudioPath);
+  }
 
   const result = url ? await auditUrl(url, groundTruth) : await audit(targetDir, groundTruth, stateContract);
   const summary = summarize(result.findings, result.filesScanned);

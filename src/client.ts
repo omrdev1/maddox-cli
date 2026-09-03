@@ -16,3 +16,4 @@ export * from "./healthScore.js";
 export * from "./routeMap.js";
 export * from "./crawl.js";
 export * from "./suggestFix.js";
+export * from "./figmaVariables.js";

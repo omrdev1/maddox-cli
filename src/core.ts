@@ -2,6 +2,7 @@ export * from "./types.js";
 export * from "./extract.js";
 export * from "./groundTruth.js";
 export * from "./tokensStudio.js";
+export * from "./figmaVariables.js";
 export * from "./scan.js";
 export * from "./crawl.js";
 export * from "./diff.js";

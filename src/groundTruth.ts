@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { loadTokensStudioFile } from "./tokensStudio.js";
+import { loadFigmaVariables } from "./figmaVariables.js";
 import type { GroundTruth, MotionToken, StateContract, TokenMap } from "./types.js";
 
 /**
@@ -64,6 +65,42 @@ export function loadGroundTruth(
   const tokens = {
     ...parseThemeTokens(themeCssPath),
     ...(tokensStudioPath ? loadTokensStudioFile(tokensStudioPath) : {}),
+  };
+
+  return {
+    tokens,
+    motion: flattenMotionTokens(motionTokensObj),
+  };
+}
+
+export interface FigmaVariablesSource {
+  fileKey: string;
+  token: string;
+  authMode?: "pat" | "oauth";
+}
+
+/**
+ * Same as loadGroundTruth, but with a fourth, optional live Figma
+ * Variables source — necessarily async, since it's a real network call,
+ * unlike the CSS/Tokens Studio file reads loadGroundTruth wraps. Kept as
+ * a separate function rather than making loadGroundTruth itself async,
+ * so every existing synchronous call site stays unaffected.
+ *
+ * Precedence when more than one source defines the same token path:
+ * Figma Variables wins over Tokens Studio, which wins over @theme CSS —
+ * Figma is the earliest point in a real design-to-code pipeline, and
+ * each step after it is more likely to be stale than the one before.
+ */
+export async function loadGroundTruthWithFigma(
+  themeCssPath: string,
+  motionTokensObj: Record<string, unknown>,
+  tokensStudioPath?: string,
+  figma?: FigmaVariablesSource
+): Promise<GroundTruth> {
+  const tokens = {
+    ...parseThemeTokens(themeCssPath),
+    ...(tokensStudioPath ? loadTokensStudioFile(tokensStudioPath) : {}),
+    ...(figma ? await loadFigmaVariables(figma.fileKey, figma.token, figma.authMode) : {}),
   };
 
   return {

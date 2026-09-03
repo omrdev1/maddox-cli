@@ -22,6 +22,16 @@ inputs:
   url:
     description: "Optional deployed page URL to scan instead of local source — fetches the page's rendered HTML plus its same-origin stylesheets. When set, target-dir is not required."
     required: false
+  figma-file:
+    description: "Optional Figma file key (from the file's URL) to pull color/spacing tokens from its Variables, merged with (and taking precedence over) theme-css/tokens-studio. Requires an Enterprise Figma plan and figma-token."
+    required: false
+  figma-token:
+    description: "Personal access token or OAuth2 token for figma-file, e.g. ${{ secrets.FIGMA_TOKEN }}. Required if figma-file is set."
+    required: false
+  figma-token-type:
+    description: "Whether figma-token is a personal access token (\"pat\", sent via X-Figma-Token) or an OAuth2 token (\"oauth\", sent via Authorization: Bearer). Defaults to pat."
+    required: false
+    default: "pat"
   github-token:
     description: "GitHub token for posting PR comments"
     required: true
@@ -49,6 +59,8 @@ runs:
       env:
         MADDOX_API_KEY: ${{ inputs.api-key }}
         MADDOX_API_URL: ${{ inputs.api-url }}
+        MADDOX_FIGMA_TOKEN: ${{ inputs.figma-token-type == 'pat' && inputs.figma-token || '' }}
+        MADDOX_FIGMA_OAUTH_TOKEN: ${{ inputs.figma-token-type == 'oauth' && inputs.figma-token || '' }}
       run: |
         MOTION_FLAG=""
         if [ -n "${{ inputs.motion-tokens }}" ]; then
@@ -68,6 +80,11 @@ runs:
         URL_FLAG=""
         if [ -n "${{ inputs.url }}" ]; then
           URL_FLAG="--url ${{ inputs.url }}"
+        fi
+
+        FIGMA_FLAG=""
+        if [ -n "${{ inputs.figma-file }}" ]; then
+          FIGMA_FLAG="--figma-file ${{ inputs.figma-file }}"
         fi
 
         # target-dir is a required positional arg in the CLI's own arg
@@ -92,6 +109,7 @@ runs:
           $STATES_FLAG \
           $TOKENS_STUDIO_FLAG \
           $URL_FLAG \
+          $FIGMA_FLAG \
           --format markdown \
           ${{ inputs.fail-below && format('--fail-below {0}', inputs.fail-below) || '' }} \
           > maddox-report.md 2> maddox-scan.log

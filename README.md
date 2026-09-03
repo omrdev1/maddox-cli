@@ -24,6 +24,7 @@ Options:
 - `--motion <path>` — path to a JSON file of motion tokens (e.g. a vendored copy of your motion-tokens export)
 - `--states <path>` — path to a state-contract JSON file (see below). No effect in `--url` mode.
 - `--tokens-studio <path>` — path to a Tokens Studio / W3C Design Tokens JSON export (see below); merged with, and taking precedence over, `@theme` on any path both define
+- `--figma-file <file-key>` — pull color/spacing tokens from a Figma file's Variables (see below); requires an Enterprise Figma plan
 - `--url <page-url>` — scan a deployed page instead of local source (see below); pass a placeholder like `-` for `<target-source-dir>` when using this alone
 - `--apply-fixes` — write near-miss color/font-size/spacing suggestions back into source files (see below); not available with `--url`
 - `--format text|json|markdown` — output format (default: `text`)
@@ -51,6 +52,19 @@ Ground truth is explicit — nothing is inferred about which states a component 
 ### Tokens Studio ground truth
 
 If your tokens live in Figma via the Tokens Studio plugin rather than (or alongside) a Tailwind `@theme` block, export them to JSON and point `--tokens-studio` at the file. A single-set export (the whole file is one token tree) and a multi-set export (top-level keys are set names, e.g. `global`, `dark`) are both supported — for a multi-set export, every set is merged, later sets overriding earlier ones by path. `{alias}` references are resolved automatically. Only token types that resolve to a single comparable value (`color`, `spacing`, `sizing`, `fontSizes`, `borderRadius`, `dimension`) are used — composite types like `typography` or `boxShadow` describe a bundle of properties, not one value to diff against, and are skipped rather than misclassified.
+
+### Figma Variables ground truth
+
+If your tokens live in native Figma Variables rather than Tokens Studio, `--figma-file <file-key>` pulls them directly from Figma's Variables REST API. **This requires an Enterprise Figma plan** — the endpoint returns a 403 for any other plan, regardless of the token's own permissions. Get the file key from the file's URL (`figma.com/design/:file_key/...`).
+
+```bash
+export MADDOX_FIGMA_TOKEN=figd_...   # a personal access token with file_variables:read scope
+npx maddox-engine ./src ./src/app/globals.css --figma-file abc123XYZ
+```
+
+The token is read from `MADDOX_FIGMA_TOKEN` (a personal access token, sent via the `X-Figma-Token` header) or `MADDOX_FIGMA_OAUTH_TOKEN` (an OAuth2 access token, sent via `Authorization: Bearer`) — never pass it as a CLI flag, which would leak it into shell history and process listings.
+
+Only `COLOR` and `FLOAT`-typed variables are used, resolved to each variable's default mode, following alias references to their underlying value. `FLOAT` variables have no unit in Figma's API — treated as pixels, matching Figma's own UI default for spacing/sizing/radius scales; a variable actually meant as a unitless multiplier will resolve wrong. `STRING`/`BOOLEAN` variables are skipped, same policy as Tokens Studio's composite types. When more than one ground-truth source is given, Figma Variables take precedence over Tokens Studio, which takes precedence over `@theme` CSS — Figma sits earliest in a real design-to-code pipeline, so a later step is more likely to be the stale one.
 
 ### Scanning a live page
 
@@ -143,6 +157,7 @@ Inputs:
 - `motion-tokens` — path to a motion-tokens JSON file
 - `states` — path to a state-contract JSON file. No effect when `url` is set.
 - `tokens-studio` — path to a Tokens Studio / W3C Design Tokens JSON export
+- `figma-file` / `figma-token` / `figma-token-type` — pull tokens from a Figma file's Variables; requires an Enterprise Figma plan. `figma-token` should be a secret (`${{ secrets.FIGMA_TOKEN }}`), never a literal value.
 - `url` — a deployed page URL to scan instead of local source
 - `github-token` *(required)* — for posting the PR comment, usually `${{ secrets.GITHUB_TOKEN }}`
 - `fail-below` — fail the build below this health score; omit for comment-only
