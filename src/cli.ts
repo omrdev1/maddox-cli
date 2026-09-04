@@ -145,7 +145,7 @@ async function main() {
   }
 
   const apiKey = process.env.MADDOX_API_KEY;
-  const apiUrl = process.env.MADDOX_API_URL ?? "http://localhost:3000";
+  const apiUrl = process.env.MADDOX_API_URL ?? "https://www.maddoxengine.com";
 
   if (apiKey) {
     await uploadResult(apiUrl, apiKey, projectName, summary);
