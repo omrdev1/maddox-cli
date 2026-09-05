@@ -2,8 +2,13 @@ import type { RawUsage } from "./extract.js";
 import type { Finding, GroundTruth } from "./types.js";
 
 const NEAR_MISS_RGB_THRESHOLD = 25;
-const NEAR_MISS_NUMERIC_THRESHOLD = 0.05; // motion durations, e.g. seconds
+const NEAR_MISS_NUMERIC_THRESHOLD = 0.05; // motion durations/delay/stagger, e.g. seconds
 const NEAR_MISS_FONT_SIZE_PX_THRESHOLD = 2;
+// Spring params run on a much larger, param-specific scale than a duration
+// in seconds (stiffness commonly ~50-500, mass ~0.5-5, damping ~5-50) — a
+// single shared absolute threshold would be meaningless across all three,
+// so this is a relative tolerance (5% of the token's own value) instead.
+const NEAR_MISS_SPRING_RELATIVE_THRESHOLD = 0.05;
 
 function hexToRgb(hex: string): [number, number, number] | null {
   // Only ever treat an actual "#..." literal as a color — a bare 3/6-digit
@@ -60,8 +65,9 @@ function diffColor(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
 // scanned `duration: 0.8` against unrelated numeric leaves like `opacity`,
 // `stiffness`, or `damping` produces a nonsensical "nearest" match purely
 // by numeric proximity, since those are different units entirely.
-const DURATION_LEAF_NAMES = new Set(["duration", "delay"]);
+const DURATION_LEAF_NAMES = new Set(["duration", "delay", "stagger"]);
 const EASE_LEAF_NAMES = new Set(["ease", "easing"]);
+const SPRING_LEAF_NAMES = new Set(["mass", "stiffness", "damping"]);
 
 function isDurationLeaf(path: string): boolean {
   return DURATION_LEAF_NAMES.has(path.split(".").pop() ?? "");
@@ -69,10 +75,46 @@ function isDurationLeaf(path: string): boolean {
 function isEaseLeaf(path: string): boolean {
   return EASE_LEAF_NAMES.has(path.split(".").pop() ?? "");
 }
+function isSpringLeaf(path: string, leafHint: string): boolean {
+  return path.split(".").pop() === leafHint;
+}
 
 function diffMotion(usage: RawUsage, motion: GroundTruth["motion"]): Finding {
   const usageNum = Number(usage.rawValue);
   const isNumeric = !Number.isNaN(usageNum);
+
+  // A spring param (mass/stiffness/damping) is tagged with leafHint by
+  // extract.ts and needs its own matching path entirely — it must only
+  // ever compare against the same-named leaf, never against durations or
+  // each other, since the three params share no common scale.
+  if (usage.leafHint && SPRING_LEAF_NAMES.has(usage.leafHint)) {
+    const candidates = motion.filter((t) => isSpringLeaf(t.path, usage.leafHint!));
+    let nearestToken: string | undefined;
+    let nearestDistance = Infinity;
+    let exact = false;
+
+    for (const token of candidates) {
+      if (typeof token.value !== "number") continue;
+      const distance = Math.abs(usageNum - token.value);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestToken = token.path;
+        exact = distance === 0;
+      }
+    }
+
+    if (exact) return { ...usage, severity: "match", nearestToken };
+    const nearestTokenValue = candidates.find((t) => t.path === nearestToken)?.value;
+    const relativeThreshold =
+      typeof nearestTokenValue === "number"
+        ? Math.abs(nearestTokenValue) * NEAR_MISS_SPRING_RELATIVE_THRESHOLD
+        : 0;
+    if (nearestDistance <= relativeThreshold) {
+      return { ...usage, severity: "near-miss", nearestToken };
+    }
+    return { ...usage, severity: "unrecognized", nearestToken };
+  }
+
   const candidates = motion.filter((t) => (isNumeric ? isDurationLeaf(t.path) : isEaseLeaf(t.path)));
 
   let nearestToken: string | undefined;
