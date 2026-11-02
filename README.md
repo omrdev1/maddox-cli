@@ -29,6 +29,18 @@ Options:
 - `--apply-fixes` — write near-miss color/font-size/spacing suggestions back into source files (see below); not available with `--url`
 - `--format text|json|markdown` — output format (default: `text`)
 - `--fail-below <0-100>` — exit non-zero if the drift health score falls below this threshold; omit to never fail
+- `--api-key <key>` — upload the result to Maddox Cloud (see below); the `MADDOX_API_KEY` environment variable does the same and is the safer choice, because a flag value can end up in shell history
+
+### Maddox Cloud (optional)
+
+Local scans are free, open source and unlimited. To keep scan history, get automated PR comments and use team dashboards, connect to [Maddox Cloud](https://www.maddoxengine.com) with an API key:
+
+```bash
+export MADDOX_API_KEY=<your-key>
+npx maddox-engine ./src ./src/app/globals.css
+```
+
+Uploading never changes the scan result or its exit code. If your monthly limit is reached or the upload fails, the CLI prints a message and carries on, so `--fail-below` still decides whether the build passes. Without a key, nothing is sent over the network. The free plan includes 5 uploaded scans a month; Team and Scale are unlimited, see [pricing](https://www.maddoxengine.com/pricing). `MADDOX_API_URL` overrides the endpoint.
 
 ### Example
 
@@ -161,7 +173,7 @@ Inputs:
 - `url` — a deployed page URL to scan instead of local source
 - `github-token` *(required)* — for posting the PR comment, usually `${{ secrets.GITHUB_TOKEN }}`
 - `fail-below` — fail the build below this health score; omit for comment-only
-- `api-key` / `api-url` — optional, upload results to a [Maddox Engine](https://www.maddoxengine.com) dashboard account for scan history and drift trends across projects (a separate hosted product, not required to use the Action itself)
+- `api-key` / `api-url` — optional, upload results to a [Maddox Engine](https://www.maddoxengine.com) dashboard account for scan history and drift trends across projects (a separate hosted product, not required to use the Action itself). When an upload succeeds, the PR comment links to the run on the dashboard. The PR comment is updated in place on every push, never duplicated.
 
 Pin `@main` to a specific commit SHA if you want reproducible CI runs immune to changes on this branch.
 
