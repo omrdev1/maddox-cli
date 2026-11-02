@@ -13,7 +13,13 @@ import {
 } from "./core.js";
 import { summarize, toJson, toMarkdown, toText, type ScanSummary } from "./format.js";
 
-async function uploadResult(apiUrl: string, apiKey: string, projectName: string, summary: ScanSummary) {
+async function uploadResult(
+  apiUrl: string,
+  apiKey: string,
+  projectName: string,
+  summary: ScanSummary,
+  source: "cli" | "github_action"
+): Promise<boolean> {
   const response = await fetch(`${apiUrl}/api/scans`, {
     method: "POST",
     headers: {
@@ -22,19 +28,25 @@ async function uploadResult(apiUrl: string, apiKey: string, projectName: string,
     },
     body: JSON.stringify({
       projectName,
-      source: "cli",
+      source,
       filesScanned: summary.filesScanned,
       findings: summary.findings,
     }),
   });
 
-  if (!response.ok) {
-    const body = await response.text();
-    throw new Error(`Upload failed (${response.status}): ${body}`);
+  // Cloud problems never fail a scan: local results are already printed and
+  // --fail-below still decides the exit code.
+  if (response.status === 429) {
+    console.error("\n⚠️ Cloud limit reached (5 scans/month). Upgrade at maddoxengine.com/pricing for unlimited CI scans.");
+    return false;
+  }
+  if (response.status !== 201) {
+    console.error(`\nCloud upload failed (${response.status}). Local results above are unaffected.`);
+    return false;
   }
 
-  const result = (await response.json()) as { scanRunId: string };
-  console.error(`\nUploaded. Scan run: ${result.scanRunId}`);
+  console.error(`\nUploaded. View the run at ${apiUrl}/dashboard`);
+  return true;
 }
 
 function flagValue(name: string): string | undefined {
@@ -53,7 +65,7 @@ async function main() {
         "[--project <name>] [--motion <path-to-motion-tokens.json>] " +
         "[--states <path-to-state-contract.json>] [--format text|json|markdown] " +
         "[--fail-below <0-100>] [--tokens-studio <path-to-tokens-studio-export.json>] " +
-        "[--url <live-page-url>] [--apply-fixes] [--figma-file <file-key>]\n" +
+        "[--url <live-page-url>] [--apply-fixes] [--figma-file <file-key>] [--api-key <key>]\n" +
         "  --url scans a deployed page's rendered HTML/CSS instead of local source " +
         "(pass a placeholder for <target-source-dir>, e.g. '-', when using --url alone). " +
         "--states has no effect in --url mode: state-completeness is a source-code check.\n" +
@@ -136,21 +148,24 @@ async function main() {
     }
   }
 
+  const apiKey = flagValue("--api-key") ?? process.env.MADDOX_API_KEY;
+  const apiUrl = process.env.MADDOX_API_URL ?? "https://www.maddoxengine.com";
+
+  // Upload first so the markdown report can link to the run only if it exists.
+  const uploaded = apiKey
+    ? await uploadResult(apiUrl, apiKey, projectName, summary, process.env.GITHUB_ACTIONS ? "github_action" : "cli")
+    : false;
+
   if (format === "json") {
     console.log(toJson(summary));
   } else if (format === "markdown") {
-    console.log(toMarkdown(summary));
+    console.log(toMarkdown(summary, { dashboardUrl: uploaded ? `${apiUrl}/dashboard` : undefined }));
   } else {
     console.log(toText(summary));
   }
 
-  const apiKey = process.env.MADDOX_API_KEY;
-  const apiUrl = process.env.MADDOX_API_URL ?? "https://www.maddoxengine.com";
-
-  if (apiKey) {
-    await uploadResult(apiUrl, apiKey, projectName, summary);
-  } else if (format === "text") {
-    console.log("\nSet MADDOX_API_KEY to upload results to the dashboard.");
+  if (!apiKey && format === "text") {
+    console.log("\n💡 Tip: Connect to Maddox Cloud for automated PR comments and team dashboards: npx maddox-engine --api-key <key>");
   }
 
   const failBelowRaw = flagValue("--fail-below");
