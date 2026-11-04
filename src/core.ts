@@ -1,9 +1,11 @@
 export * from "./types.js";
+export * from "./color.js";
 export * from "./extract.js";
 export * from "./groundTruth.js";
 export * from "./tokensStudio.js";
 export * from "./figmaVariables.js";
 export * from "./scan.js";
+export * from "./ignore.js";
 export * from "./crawl.js";
 export * from "./diff.js";
 export * from "./stateCheck.js";
@@ -22,14 +24,15 @@ import type { GroundTruth, ScanResult, StateContract } from "./types.js";
 export async function audit(
   rootDir: string,
   groundTruth: GroundTruth,
-  stateContract?: StateContract
+  stateContract?: StateContract,
+  ignorePatterns: string[] = []
 ): Promise<ScanResult> {
-  const usages = await scanSource(rootDir);
+  const usages = await scanSource(rootDir, ignorePatterns);
   const findings = diffUsages(usages, groundTruth);
   const scannedFiles = new Set(usages.map((u) => u.file));
 
   if (stateContract) {
-    const files = await scanFiles(rootDir);
+    const files = await scanFiles(rootDir, ignorePatterns);
     findings.push(...checkStates(files, stateContract));
     for (const f of files) scannedFiles.add(f.file);
   }

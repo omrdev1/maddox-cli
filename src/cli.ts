@@ -7,6 +7,7 @@ import {
   auditUrl,
   FigmaVariablesUnavailableError,
   healthScore,
+  hasUsableGroundTruth,
   loadGroundTruth,
   loadGroundTruthWithFigma,
   loadStateContract,
@@ -54,6 +55,15 @@ function flagValue(name: string): string | undefined {
   return i !== -1 ? process.argv[i + 1] : undefined;
 }
 
+// --exclude may be passed more than once, e.g. --exclude "api/**" --exclude "*.generated.ts"
+function flagValues(name: string): string[] {
+  const out: string[] = [];
+  process.argv.forEach((arg, i) => {
+    if (arg === name && process.argv[i + 1]) out.push(process.argv[i + 1]);
+  });
+  return out;
+}
+
 async function main() {
   const targetDir = process.argv[2];
   const themeCssPath = process.argv[3];
@@ -65,7 +75,7 @@ async function main() {
         "[--project <name>] [--motion <path-to-motion-tokens.json>] " +
         "[--states <path-to-state-contract.json>] [--format text|json|markdown] " +
         "[--fail-below <0-100>] [--tokens-studio <path-to-tokens-studio-export.json>] " +
-        "[--url <live-page-url>] [--apply-fixes] [--figma-file <file-key>] [--api-key <key>]\n" +
+        "[--url <live-page-url>] [--apply-fixes] [--figma-file <file-key>] [--api-key <key>] [--exclude <glob>]\n" +
         "  --url scans a deployed page's rendered HTML/CSS instead of local source " +
         "(pass a placeholder for <target-source-dir>, e.g. '-', when using --url alone). " +
         "--states has no effect in --url mode: state-completeness is a source-code check.\n" +
@@ -75,7 +85,11 @@ async function main() {
         "  --figma-file <file-key> pulls color/spacing tokens from a Figma file's " +
         "Variables (the file key from its URL). Requires an Enterprise Figma plan and " +
         "MADDOX_FIGMA_TOKEN set to a personal access token (or MADDOX_FIGMA_OAUTH_TOKEN " +
-        "for an OAuth2 token) — never pass the token as a CLI flag."
+        "for an OAuth2 token) — never pass the token as a CLI flag.\n" +
+        "  --exclude <glob> skips matching files/directories (repeatable). A pattern " +
+        "with no '/' matches at any depth, e.g. --exclude 'api/**' --exclude '*.generated.ts'. " +
+        "A <target-source-dir>/.maddoxignore file (one glob per line) is always applied too. " +
+        "Test, spec and story files are skipped by default."
     );
     process.exit(1);
   }
@@ -126,7 +140,18 @@ async function main() {
     groundTruth = loadGroundTruth(themeCssPath, motionTokens, tokensStudioPath);
   }
 
-  const result = url ? await auditUrl(url, groundTruth) : await audit(targetDir, groundTruth, stateContract);
+  if (!hasUsableGroundTruth(groundTruth)) {
+    console.error(
+      `\nNo usable design tokens found in ${themeCssPath}.\n` +
+        "Maddox reads color and size values from @theme blocks and resolves var() references from :root. " +
+        "Point it at the CSS file that defines your theme, or add --tokens-studio or --figma-file."
+    );
+    process.exit(1);
+  }
+
+  const result = url
+    ? await auditUrl(url, groundTruth)
+    : await audit(targetDir, groundTruth, stateContract, flagValues("--exclude"));
   const summary = summarize(result.findings, result.filesScanned);
 
   const applyFixesFlag = process.argv.includes("--apply-fixes");

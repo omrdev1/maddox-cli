@@ -1,3 +1,4 @@
+import { parseColor, type Rgb } from "./color.js";
 import type { RawUsage } from "./extract.js";
 import type { Finding, GroundTruth } from "./types.js";
 
@@ -10,31 +11,12 @@ const NEAR_MISS_FONT_SIZE_PX_THRESHOLD = 2;
 // so this is a relative tolerance (5% of the token's own value) instead.
 const NEAR_MISS_SPRING_RELATIVE_THRESHOLD = 0.05;
 
-function hexToRgb(hex: string): [number, number, number] | null {
-  // Only ever treat an actual "#..." literal as a color — a bare 3/6-digit
-  // string without the leading # (e.g. a z-index value like "999") is not
-  // a color and must not be matched against the color token pool.
-  if (!hex.startsWith("#")) return null;
-
-  const normalized = hex.replace(
-    /^#([a-f\d])([a-f\d])([a-f\d])$/i,
-    (_m, r, g, b) => `#${r}${r}${g}${g}${b}${b}`
-  );
-  const result = /^#([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(normalized);
-  if (!result) return null;
-  return [
-    parseInt(result[1], 16),
-    parseInt(result[2], 16),
-    parseInt(result[3], 16),
-  ];
-}
-
-function colorDistance(a: [number, number, number], b: [number, number, number]): number {
+function colorDistance(a: Rgb, b: Rgb): number {
   return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
 }
 
 function diffColor(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
-  const usageRgb = hexToRgb(usage.rawValue);
+  const usageRgb = parseColor(usage.rawValue);
   if (!usageRgb) {
     return { ...usage, severity: "unrecognized" };
   }
@@ -43,7 +25,7 @@ function diffColor(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
   let nearestDistance = Infinity;
 
   for (const [name, value] of Object.entries(tokens)) {
-    const tokenRgb = hexToRgb(value);
+    const tokenRgb = parseColor(value);
     if (!tokenRgb) continue;
     const distance = colorDistance(usageRgb, tokenRgb);
     if (distance < nearestDistance) {
@@ -181,14 +163,30 @@ function diffFontSize(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
     }
   }
 
+  // 0.875rem and 14px are the same size, so an exact pixel match is a match.
+  if (nearestDistance === 0) {
+    return { ...usage, severity: "match", nearestToken };
+  }
   if (nearestDistance <= NEAR_MISS_FONT_SIZE_PX_THRESHOLD) {
     return { ...usage, severity: "near-miss", nearestToken };
   }
   return { ...usage, severity: "unrecognized", nearestToken };
 }
 
+// A usage can only drift from a token that exists: with no color tokens, every
+// color would be "unrecognized", which is noise, not a finding.
+function hasTokensFor(kind: RawUsage["kind"], groundTruth: GroundTruth): boolean {
+  if (kind === "motion") return groundTruth.motion.length > 0;
+  const values = Object.values(groundTruth.tokens);
+  if (kind === "color") return values.some((value) => parseColor(value) !== null);
+  return values.some((value) => toPx(value) !== null);
+}
+
 export function diffUsages(usages: RawUsage[], groundTruth: GroundTruth): Finding[] {
-  return usages.map((usage) => {
+  const comparableKinds = new Set(
+    (["color", "font-size", "spacing", "motion"] as const).filter((kind) => hasTokensFor(kind, groundTruth))
+  );
+  return usages.filter((usage) => comparableKinds.has(usage.kind)).map((usage) => {
     if (usage.kind === "color") return diffColor(usage, groundTruth.tokens);
     if (usage.kind === "motion") return diffMotion(usage, groundTruth.motion);
     if (usage.kind === "font-size") return diffFontSize(usage, groundTruth.tokens);

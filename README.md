@@ -31,6 +31,14 @@ Options:
 - `--fail-below <0-100>` — exit non-zero if the drift health score falls below this threshold; omit to never fail
 - `--api-key <key>` — upload the result to Maddox Cloud (see below); the `MADDOX_API_KEY` environment variable does the same and is the safer choice, because a flag value can end up in shell history
 
+- `--exclude <glob>` — skip matching files or directories (repeatable); a `.maddoxignore` file in the target directory (one glob per line) is applied too. Test, spec, story and mock files are skipped by default.
+
+### What counts as a finding
+
+Maddox reads your tokens from every `@theme` block (including `@theme inline`) and resolves `var()` references from `:root`, so the shadcn pattern (`--color-background: var(--background)`) works. Token values can be hex, `rgb()`, `hsl()` or `oklch()`. Dark-mode overrides are not read. If no usable tokens are found it exits with an error instead of scoring everything as drift.
+
+Comments and token definitions (a custom property declaration such as `--color-brand: #123456;`) are not usages. A kind of value is only compared when your theme has tokens of that kind, so a project without font-size tokens gets no font-size findings.
+
 ### Maddox Cloud (optional)
 
 Local scans are free, open source and unlimited. To keep scan history, get automated PR comments and use team dashboards, connect to [Maddox Cloud](https://www.maddoxengine.com) with an API key:

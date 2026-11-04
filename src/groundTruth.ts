@@ -1,25 +1,19 @@
 import { readFileSync } from "node:fs";
 import { loadTokensStudioFile } from "./tokensStudio.js";
 import { loadFigmaVariables } from "./figmaVariables.js";
+import { hasComparableTokens, parseThemeCss } from "./themeCss.js";
 import type { GroundTruth, MotionToken, StateContract, TokenMap } from "./types.js";
 
-/**
- * Parses a Tailwind v4 `@theme { ... }` block into a flat token map.
- * Only reads inside the @theme block, not the rest of the CSS file.
- */
-export function parseThemeTokens(cssFilePath: string): TokenMap {
-  const css = readFileSync(cssFilePath, "utf-8");
-  const themeMatch = css.match(/@theme\s*{([\s\S]*?)}/);
-  if (!themeMatch) return {};
+export { parseThemeCss, hasComparableTokens } from "./themeCss.js";
 
-  const themeBlock = themeMatch[1];
-  const tokens: TokenMap = {};
-  const varRegex = /(--[\w-]+):\s*([^;]+);/g;
-  let match: RegExpExecArray | null;
-  while ((match = varRegex.exec(themeBlock)) !== null) {
-    tokens[match[1].trim()] = match[2].trim();
-  }
-  return tokens;
+/** True when there is something to compare against: comparable tokens or motion tokens. */
+export function hasUsableGroundTruth(groundTruth: GroundTruth): boolean {
+  return hasComparableTokens(groundTruth.tokens) || groundTruth.motion.length > 0;
+}
+
+/** Reads a CSS file and parses its Tailwind v4 theme tokens (see parseThemeCss). */
+export function parseThemeTokens(cssFilePath: string): TokenMap {
+  return parseThemeCss(readFileSync(cssFilePath, "utf-8"));
 }
 
 /**

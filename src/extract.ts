@@ -30,14 +30,55 @@ export interface ScannedFile {
 
 const HEX_RE = /#([a-f0-9]{3}|[a-f0-9]{6})\b/gi;
 const FONT_SIZE_RE = /font-size:\s*([\d.]+(?:px|rem|em))/gi;
-const MOTION_DURATION_RE = /duration:\s*([\d.]+)/gi;
+const MOTION_DURATION_RE = /duration:\s*([\d.]+)(ms|s)?/gi;
 const MOTION_EASE_RE = /ease:\s*['"]([\w-]+)['"]/gi;
-const MOTION_DELAY_RE = /delay:\s*([\d.]+)/gi;
-const MOTION_STAGGER_RE = /stagger:\s*([\d.]+)/gi;
+const MOTION_DELAY_RE = /delay:\s*([\d.]+)(ms|s)?/gi;
+const MOTION_STAGGER_RE = /stagger:\s*([\d.]+)(ms|s)?/gi;
 const MOTION_SPRING_RE = /\b(mass|stiffness|damping):\s*([\d.]+)/gi;
 
 function lineNumberAt(content: string, index: number): number {
   return content.slice(0, index).split("\n").length;
+}
+
+const BLOCK_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
+const LINE_COMMENT_RE = /(^|[^:'"\\])\/\/[^\n]*/gm;
+const CUSTOM_PROPERTY_DECLARATION_RE = /--[\w-]+\s*:[^;{}\n]*;?/g;
+// A zero or one-millisecond duration is the "disable motion" idiom (reduced
+// motion rules, `duration: 0`), not a motion decision to compare to a token.
+const NO_OP_MOTION_SECONDS = 0.001;
+
+// Blanking with spaces keeps every index and line number valid.
+function blank(text: string): string {
+  return text.replace(/[^\n]/g, " ");
+}
+
+// Comments and custom-property declarations are not usages: the first is
+// prose, the second is where a token's own value is defined.
+function maskNonUsage(content: string): string {
+  return content
+    .replace(BLOCK_COMMENT_RE, blank)
+    .replace(LINE_COMMENT_RE, (match, lead: string) => lead + blank(match.slice(lead.length)))
+    .replace(CUSTOM_PROPERTY_DECLARATION_RE, blank);
+}
+
+// Returns the value in seconds as a string, or null for a no-op or unreadable value.
+function motionSeconds(raw: string, unit: string | undefined): string | null {
+  const number = Number(raw);
+  if (Number.isNaN(number)) return null;
+  const inMilliseconds = unit?.toLowerCase() === "ms";
+  const seconds = inMilliseconds ? number / 1000 : number;
+  if (seconds <= NO_OP_MOTION_SECONDS) return null;
+  return inMilliseconds ? String(seconds) : raw;
+}
+
+function collectMotionTimings(file: string, content: string, re: RegExp, usages: RawUsage[]): void {
+  re.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const rawValue = motionSeconds(m[1], m[2]);
+    if (rawValue === null) continue;
+    usages.push({ file, line: lineNumberAt(content, m.index), kind: "motion", rawValue });
+  }
 }
 
 /**
@@ -46,7 +87,8 @@ function lineNumberAt(content: string, index: number): number {
  * fetched-HTML/CSS path — the same extraction either way, source doesn't
  * matter.
  */
-export function extractFromContent(file: string, content: string): RawUsage[] {
+export function extractFromContent(file: string, rawContent: string): RawUsage[] {
+  const content = maskNonUsage(rawContent);
   const usages: RawUsage[] = [];
 
   for (const re of [HEX_RE]) {
@@ -73,38 +115,12 @@ export function extractFromContent(file: string, content: string): RawUsage[] {
     });
   }
 
-  MOTION_DURATION_RE.lastIndex = 0;
-  while ((m = MOTION_DURATION_RE.exec(content)) !== null) {
-    usages.push({
-      file,
-      line: lineNumberAt(content, m.index),
-      kind: "motion",
-      rawValue: m[1],
-    });
+  for (const re of [MOTION_DURATION_RE, MOTION_DELAY_RE, MOTION_STAGGER_RE]) {
+    collectMotionTimings(file, content, re, usages);
   }
 
   MOTION_EASE_RE.lastIndex = 0;
   while ((m = MOTION_EASE_RE.exec(content)) !== null) {
-    usages.push({
-      file,
-      line: lineNumberAt(content, m.index),
-      kind: "motion",
-      rawValue: m[1],
-    });
-  }
-
-  MOTION_DELAY_RE.lastIndex = 0;
-  while ((m = MOTION_DELAY_RE.exec(content)) !== null) {
-    usages.push({
-      file,
-      line: lineNumberAt(content, m.index),
-      kind: "motion",
-      rawValue: m[1],
-    });
-  }
-
-  MOTION_STAGGER_RE.lastIndex = 0;
-  while ((m = MOTION_STAGGER_RE.exec(content)) !== null) {
     usages.push({
       file,
       line: lineNumberAt(content, m.index),
