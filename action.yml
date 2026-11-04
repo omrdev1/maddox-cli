@@ -26,7 +26,7 @@ inputs:
     description: "Optional Figma file key (from the file's URL) to pull color/spacing tokens from its Variables, merged with (and taking precedence over) theme-css/tokens-studio. Requires an Enterprise Figma plan and figma-token."
     required: false
   figma-token:
-    description: "Personal access token or OAuth2 token for figma-file, e.g. ${{ secrets.FIGMA_TOKEN }}. Required if figma-file is set."
+    description: "Personal access token or OAuth2 token for figma-file, e.g. a repository secret named FIGMA_TOKEN passed in from your workflow. Required if figma-file is set."
     required: false
   figma-token-type:
     description: "Whether figma-token is a personal access token (\"pat\", sent via X-Figma-Token) or an OAuth2 token (\"oauth\", sent via Authorization: Bearer). Defaults to pat."
