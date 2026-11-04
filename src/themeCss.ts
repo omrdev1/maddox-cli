@@ -94,20 +94,29 @@ function resolveVariable(
  * block (including `inline`, `static` and friends) and resolves `var()`
  * references against `:root`, so the common shadcn pattern
  * (`--color-background: var(--background)` with the value in `:root`)
- * yields real values. Dark-mode overrides are not read. A token whose
+ * yields real values. With no @theme block at all, the `:root` variables
+ * are the tokens. Dark-mode overrides are not read. A token whose
  * reference cannot be resolved is dropped rather than kept as text.
  */
 export function parseThemeCss(css: string): TokenMap {
   const rootVars: TokenMap = {};
   const themeVars: TokenMap = {};
+  let hasThemeBlock = false;
   for (const { prelude, body } of collectBlocks(stripComments(css))) {
-    if (/^@theme\b/.test(prelude)) Object.assign(themeVars, readDeclarations(body));
-    else if (isRootRule(prelude)) Object.assign(rootVars, readDeclarations(body));
+    if (/^@theme\b/.test(prelude)) {
+      hasThemeBlock = true;
+      Object.assign(themeVars, readDeclarations(body));
+    } else if (isRootRule(prelude)) {
+      Object.assign(rootVars, readDeclarations(body));
+    }
   }
 
+  // Without any @theme block (plain CSS, Tailwind v3 style), the :root
+  // variables are the design tokens themselves.
+  const declared = hasThemeBlock ? themeVars : rootVars;
   const lookup = { ...rootVars, ...themeVars };
   const tokens: TokenMap = {};
-  for (const [name, value] of Object.entries(themeVars)) {
+  for (const [name, value] of Object.entries(declared)) {
     const resolved = resolveReferences(value, lookup, new Set([name]));
     if (resolved !== null) tokens[name] = resolved;
   }

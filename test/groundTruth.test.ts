@@ -81,3 +81,19 @@ test("reads a plain @theme block that follows an @import", () => {
     "--color-ink": "#111111",
   });
 });
+
+test("with no @theme block, :root variables are the tokens", () => {
+  const css = `
+    :root { --brand: #112233; --gap: 16px; --accent: var(--brand); }
+    .dark { --brand: #ffffff; }`;
+  assert.deepEqual(parseThemeCss(css), { "--brand": "#112233", "--gap": "16px", "--accent": "#112233" });
+});
+
+test("when an @theme block exists, :root variables are only used to resolve it", () => {
+  const css = `:root { --internal: #ffffff; } @theme { --color-a: #000000; }`;
+  assert.deepEqual(parseThemeCss(css), { "--color-a": "#000000" });
+});
+
+test("a file with neither @theme nor :root yields no tokens", () => {
+  assert.deepEqual(parseThemeCss(".x { color: red; }"), {});
+});

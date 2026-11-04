@@ -53,3 +53,40 @@ test("reads motion durations with their unit", () => {
   assert.deepEqual(values("transition-duration: 300ms;"), ["0.3"]);
   assert.deepEqual(values("transition: { duration: 0.8 }"), ["0.8"]);
 });
+
+test("maddox-ignore on a line skips that line only", () => {
+  const content = ['const a = "#111111"; // maddox-ignore', 'const b = "#222222";'].join("\n");
+  assert.deepEqual(values(content), ["#222222"]);
+});
+
+test("maddox-ignore-next-line skips the following line, in line and block comments", () => {
+  const content = [
+    "// maddox-ignore-next-line",
+    'const a = "#111111";',
+    "/* maddox-ignore-next-line */",
+    ".x { color: #222222; }",
+    'const c = "#333333";',
+  ].join("\n");
+  assert.deepEqual(values(content), ["#333333"]);
+});
+
+test("maddox-ignore-start and maddox-ignore-end skip a whole region", () => {
+  const content = [
+    'const before = "#111111";',
+    "// maddox-ignore-start",
+    'const palette = ["#222222", "#333333"];',
+    'const preset = { background: "#444444" };',
+    "// maddox-ignore-end",
+    'const after = "#555555";',
+  ].join("\n");
+  assert.deepEqual(values(content), ["#111111", "#555555"]);
+});
+
+test("an unclosed region skips to the end of the file, and ordinary comments suppress nothing", () => {
+  assert.deepEqual(values(['// maddox-ignore-start', 'const a = "#111111";', 'const b = "#222222";'].join("\n")), []);
+  assert.deepEqual(values(['// please ignore this', 'const a = "#111111";'].join("\n")), ["#111111"]);
+});
+
+test("ignored lines also hide motion values", () => {
+  assert.deepEqual(values("{ duration: 0.8 } // maddox-ignore"), []);
+});

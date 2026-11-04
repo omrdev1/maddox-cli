@@ -139,8 +139,24 @@ function toPx(value: string): number | null {
   return num * ROOT_PX;
 }
 
+// Tailwind's `--text-*` namespace, or any name that says "font size"
+// (`--font-size-md`, Tokens Studio's `--fontSizes-base`).
+const FONT_SIZE_NAME_RE = /^--text-|font-?sizes?/i;
+
+type TokenEntry = [name: string, value: string];
+
+// A font size should only drift from font-size tokens, not from a radius or a
+// spacing step that happens to share a length. When the theme names no
+// font-size tokens at all, any length token is still compared.
+function fontSizeCandidates(tokens: GroundTruth["tokens"]): TokenEntry[] {
+  const lengths = Object.entries(tokens).filter(([, value]) => toPx(value) !== null);
+  const named = lengths.filter(([name]) => FONT_SIZE_NAME_RE.test(name));
+  return named.length > 0 ? named : lengths;
+}
+
 function diffFontSize(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
-  const exactMatch = Object.entries(tokens).find(([, value]) => value === usage.rawValue);
+  const candidates = fontSizeCandidates(tokens);
+  const exactMatch = candidates.find(([, value]) => value === usage.rawValue);
   if (exactMatch) {
     return { ...usage, severity: "match", nearestToken: exactMatch[0] };
   }
@@ -153,7 +169,7 @@ function diffFontSize(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
   let nearestToken: string | undefined;
   let nearestDistance = Infinity;
 
-  for (const [name, value] of Object.entries(tokens)) {
+  for (const [name, value] of candidates) {
     const tokenPx = toPx(value);
     if (tokenPx === null) continue;
     const distance = Math.abs(usagePx - tokenPx);
@@ -177,9 +193,8 @@ function diffFontSize(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
 // color would be "unrecognized", which is noise, not a finding.
 function hasTokensFor(kind: RawUsage["kind"], groundTruth: GroundTruth): boolean {
   if (kind === "motion") return groundTruth.motion.length > 0;
-  const values = Object.values(groundTruth.tokens);
-  if (kind === "color") return values.some((value) => parseColor(value) !== null);
-  return values.some((value) => toPx(value) !== null);
+  if (kind === "color") return Object.values(groundTruth.tokens).some((value) => parseColor(value) !== null);
+  return fontSizeCandidates(groundTruth.tokens).length > 0;
 }
 
 export function diffUsages(usages: RawUsage[], groundTruth: GroundTruth): Finding[] {

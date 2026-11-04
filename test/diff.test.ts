@@ -63,3 +63,23 @@ test("each kind is only compared when its own tokens exist", () => {
   const findings = diffUsages(usages, { tokens: { "--color-ink": "#111111" }, motion: [] });
   assert.deepEqual(findings.map((f) => f.kind), ["color"]);
 });
+
+test("font sizes are compared only against font-size tokens when the theme has them", () => {
+  const tokens = { "--text-sm": "14px", "--radius-lg": "16px", "--spacing-4": "16px" };
+  const [finding] = diffUsages([fontSizeUsage("16px")], { tokens, motion: [] });
+  assert.equal(finding.severity, "near-miss");
+  assert.equal(finding.nearestToken, "--text-sm");
+});
+
+test("Tokens Studio style font size names count as font-size tokens", () => {
+  const tokens = { "--fontSizes-base": "16px", "--spacing-md": "18px" };
+  const [finding] = diffUsages([fontSizeUsage("18px")], { tokens, motion: [] });
+  assert.equal(finding.nearestToken, "--fontSizes-base");
+  assert.equal(finding.severity, "near-miss");
+});
+
+test("with no font-size named tokens, any length token is still compared", () => {
+  const [finding] = diffUsages([fontSizeUsage("16px")], { tokens: { "--size-body": "16px" }, motion: [] });
+  assert.equal(finding.severity, "match");
+  assert.equal(finding.nearestToken, "--size-body");
+});

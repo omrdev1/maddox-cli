@@ -47,6 +47,35 @@ const CUSTOM_PROPERTY_DECLARATION_RE = /--[\w-]+\s*:[^;{}\n]*;?/g;
 // motion rules, `duration: 0`), not a motion decision to compare to a token.
 const NO_OP_MOTION_SECONDS = 0.001;
 
+const IGNORE_DIRECTIVE_RE = /maddox-ignore(-next-line|-start|-end)?\b/;
+
+/**
+ * Line numbers an author has opted out of with a comment directive:
+ * `maddox-ignore` (this line), `maddox-ignore-next-line`, or a
+ * `maddox-ignore-start` / `maddox-ignore-end` region (open to end of file if
+ * never closed). For intentional values such as a chart palette or theme preset.
+ */
+export function findIgnoredLines(content: string): Set<number> {
+  const ignored = new Set<number>();
+  let inRegion = false;
+  content.split("\n").forEach((text, index) => {
+    const line = index + 1;
+    const kind = IGNORE_DIRECTIVE_RE.exec(text)?.[1];
+    if (inRegion) ignored.add(line);
+    if (kind === "-start") {
+      inRegion = true;
+      ignored.add(line);
+    } else if (kind === "-end") {
+      inRegion = false;
+    } else if (kind === "-next-line") {
+      ignored.add(line + 1);
+    } else if (IGNORE_DIRECTIVE_RE.test(text)) {
+      ignored.add(line);
+    }
+  });
+  return ignored;
+}
+
 // Blanking with spaces keeps every index and line number valid.
 function blank(text: string): string {
   return text.replace(/[^\n]/g, " ");
@@ -140,5 +169,6 @@ export function extractFromContent(file: string, rawContent: string): RawUsage[]
     });
   }
 
-  return usages;
+  const ignoredLines = findIgnoredLines(rawContent);
+  return usages.filter((usage) => !ignoredLines.has(usage.line));
 }
