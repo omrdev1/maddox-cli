@@ -114,3 +114,12 @@ export function toMarkdown(summary: ScanSummary, options: MarkdownOptions = {}):
 
   return lines.join("\n").trimEnd();
 }
+
+const RUN_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Link to an uploaded run's own dashboard page, or the dashboard if the response has no valid id. */
+export function dashboardRunUrl(apiUrl: string, uploadResponse: unknown): string {
+  const base = apiUrl.replace(/\/+$/, "");
+  const id = (uploadResponse as { scanRunId?: unknown } | null)?.scanRunId;
+  return typeof id === "string" && RUN_ID_RE.test(id) ? `${base}/dashboard/runs/${id}` : `${base}/dashboard`;
+}

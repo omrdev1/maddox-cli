@@ -12,7 +12,7 @@ import {
   loadGroundTruthWithFigma,
   loadStateContract,
 } from "./core.js";
-import { summarize, toJson, toMarkdown, toText, type ScanSummary } from "./format.js";
+import { dashboardRunUrl, summarize, toJson, toMarkdown, toText, type ScanSummary } from "./format.js";
 
 async function uploadResult(
   apiUrl: string,
@@ -20,7 +20,7 @@ async function uploadResult(
   projectName: string,
   summary: ScanSummary,
   source: "cli" | "github_action"
-): Promise<boolean> {
+): Promise<string | undefined> {
   const response = await fetch(`${apiUrl}/api/scans`, {
     method: "POST",
     headers: {
@@ -39,15 +39,16 @@ async function uploadResult(
   // --fail-below still decides the exit code.
   if (response.status === 429) {
     console.error("\n⚠️ Cloud limit reached (5 scans/month). Upgrade at maddoxengine.com/pricing for unlimited CI scans.");
-    return false;
+    return undefined;
   }
   if (response.status !== 201) {
     console.error(`\nCloud upload failed (${response.status}). Local results above are unaffected.`);
-    return false;
+    return undefined;
   }
 
-  console.error(`\nUploaded. View the run at ${apiUrl}/dashboard`);
-  return true;
+  const runUrl = dashboardRunUrl(apiUrl, await response.json().catch(() => null));
+  console.error(`\nUploaded. View the run at ${runUrl}`);
+  return runUrl;
 }
 
 function flagValue(name: string): string | undefined {
@@ -177,14 +178,14 @@ async function main() {
   const apiUrl = process.env.MADDOX_API_URL ?? "https://www.maddoxengine.com";
 
   // Upload first so the markdown report can link to the run only if it exists.
-  const uploaded = apiKey
+  const runUrl = apiKey
     ? await uploadResult(apiUrl, apiKey, projectName, summary, process.env.GITHUB_ACTIONS ? "github_action" : "cli")
-    : false;
+    : undefined;
 
   if (format === "json") {
     console.log(toJson(summary));
   } else if (format === "markdown") {
-    console.log(toMarkdown(summary, { dashboardUrl: uploaded ? `${apiUrl}/dashboard` : undefined }));
+    console.log(toMarkdown(summary, { dashboardUrl: runUrl }));
   } else {
     console.log(toText(summary));
   }
