@@ -26,7 +26,7 @@ Options:
 - `--tokens-studio <path>` — path to a Tokens Studio / W3C Design Tokens JSON export (see below); merged with, and taking precedence over, `@theme` on any path both define
 - `--figma-file <file-key>` — pull color/spacing tokens from a Figma file's Variables (see below); requires an Enterprise Figma plan
 - `--url <page-url>` — scan a deployed page instead of local source (see below); pass a placeholder like `-` for `<target-source-dir>` when using this alone
-- `--apply-fixes` — write near-miss color/font-size/spacing suggestions back into source files (see below); not available with `--url`
+- `--apply-fixes` — write near-miss color/font-size suggestions back into source files (see below); not available with `--url`
 - `--format text|json|markdown` — output format (default: `text`)
 - `--fail-below <0-100>` — exit non-zero if the drift health score falls below this threshold; omit to never fail
 - `--api-key <key>` — upload the result to Maddox Cloud (see below); the `MADDOX_API_KEY` environment variable does the same and is the safer choice, because a flag value can end up in shell history
@@ -40,6 +40,8 @@ Maddox reads your tokens from every `@theme` block (including `@theme inline`) a
 With no `@theme` block at all (plain CSS or a Tailwind v3 style setup), the `:root` variables are used as the tokens.
 
 Comments and token definitions (a custom property declaration such as `--color-brand: #123456;`) are not usages. A kind of value is only compared when your theme has tokens of that kind, so a project without font-size tokens gets no font-size findings. Font sizes are compared against font-size tokens (`--text-*` or a name containing `font-size`) when the theme has any, and otherwise against non-excluded length tokens (skipping `--radius*`, `--spacing*`, and similar layout namespaces).
+
+Usages detected in source today: hex colors (`#rgb`, `#rrggbb`, including inside Tailwind arbitrary classes like `bg-[#123456]`), CSS `font-size:` declarations, and motion values (duration, delay, stagger, ease, spring). Not yet detected: `rgb()`/`hsl()`/`oklch()` literals in source, 4- and 8-digit hex, JSX `fontSize`, Tailwind `text-[15px]`, and spacing values.
 
 For intentional values such as a chart palette or a set of theme presets, opt out in the source with a comment:
 
@@ -129,7 +131,7 @@ Every `near-miss` finding with a resolved nearest token gets a `suggestion` — 
 npx maddox-engine ./src ./src/app/globals.css --apply-fixes
 ```
 
-`--apply-fixes` writes every `color`/`font-size`/`spacing` near-miss suggestion straight into the source file it was found in, replacing the exact literal with `var(--token-name)`. It's scoped deliberately narrow:
+`--apply-fixes` writes every `color`/`font-size` near-miss suggestion straight into the source file it was found in, replacing the exact literal with `var(--token-name)`. It's scoped deliberately narrow:
 
 - **Motion suggestions are never applied.** `motionTokens.path.to.value` assumes an import named `motionTokens` exists in that file's scope — there's no way to verify that per-file, and applying it blind could silently break the build. Motion findings always stay advisory-only.
 - **State findings never had a suggestion to apply.**
