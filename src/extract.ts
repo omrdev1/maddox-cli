@@ -1,3 +1,6 @@
+import { parseAlpha } from "./color.js";
+import type { FixStyle } from "./types.js";
+
 // Browser-safe extraction — no Node built-ins (fs/path), so this module
 // (and anything that only imports from it) can be bundled into a "use
 // client" component without breaking a webpack/browser build. Keep it
@@ -10,6 +13,11 @@ export interface RawUsage {
   line: number;
   kind: "color" | "spacing" | "font-size" | "motion";
   rawValue: string;
+  // 1-based column and exact source text of the value (rawValue may be
+  // normalized: lowercased hex, px for a bare JS number, seconds for ms).
+  column?: number;
+  literal?: string;
+  fixStyle?: FixStyle;
   // Only set for spring params (mass/stiffness/damping) — these share no
   // common numeric range (stiffness commonly ~50-500, mass ~0.5-5, damping
   // ~5-50), so pure numeric-proximity matching across all motion tokens
@@ -28,8 +36,44 @@ export interface ScannedFile {
   content: string;
 }
 
-const HEX_RE = /#([a-f0-9]{3}|[a-f0-9]{6})\b/gi;
+// Not after `&` (HTML entities like `&#8217;`) or a letter/digit. `_` is
+// allowed: Tailwind writes spaces as `_` (`shadow-[0_0_1px_#123]`).
+const HEX_RE = /(?<![&A-Za-z0-9])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})\b/gi;
+// Numeric arguments only: `hsl(var(--primary))` and Tailwind's compiled
+// `rgb(0 0 0 / var(--tw-bg-opacity))` are token references, not literals.
+const COLOR_FUNCTION_RE = /(?<![\w-])(?:rgba?|hsla?|oklch)\(\s*[-+.\d][^()]*\)/gi;
 const FONT_SIZE_RE = /font-size:\s*([\d.]+(?:px|rem|em))/gi;
+const NUMBER = "\\d*\\.?\\d+";
+const LENGTH = `${NUMBER}(?:px|rem|em)`;
+const JSX_FONT_SIZE_RE = new RegExp(
+  `(?<![\\w-])fontSize\\s*:\\s*(?:(['"\`])(${LENGTH})\\1|(${NUMBER})(?=\\s*[,}\\n]))`,
+  "g"
+);
+const TAILWIND_FONT_SIZE_RE = new RegExp(`(?<![\\w-])text-\\[(${LENGTH})\\]`, "g");
+// padding/margin/gap and their sides, in CSS (`margin-top`) or JS (`marginTop`) case.
+const SPACING_PROPERTY_RE =
+  /(?<![\w-])(?:padding|margin|row-?gap|column-?gap|gap)(?:-?(?:top|right|bottom|left|inline|block|horizontal|vertical)(?:-?(?:start|end))?)?\s*:\s*([^;,{}\n]+)/gi;
+// A length inside a property value; not after `-` (negatives can't take a token), `.`, `#` or a word.
+const VALUE_LENGTH_RE = new RegExp(`(?<![\\w.#-])(${LENGTH})\\b`, "g");
+const TAILWIND_SPACING_RE = new RegExp(
+  `(?<![\\w-])(?:p[xytrblse]?|m[xytrblse]?|gap(?:-[xy])?|space-[xy])-\\[(${LENGTH})\\]`,
+  "g"
+);
+const BARE_NUMBER_RE = new RegExp(`^${NUMBER}$`);
+// `[stroke='#fff']` is an attribute selector matching what a library renders
+// (shadcn's chart.tsx targets Recharts this way). Rewriting it to a token
+// would stop the selector matching, so it is not a usage.
+const BEFORE_ATTRIBUTE_VALUE_RE = /=\s*['"]?$/;
+const AFTER_ATTRIBUTE_VALUE_RE = /^['"]?\s*\]/;
+
+function isAttributeSelectorValue(content: string, index: number, length: number): boolean {
+  return (
+    BEFORE_ATTRIBUTE_VALUE_RE.test(content.slice(Math.max(0, index - 4), index)) &&
+    AFTER_ATTRIBUTE_VALUE_RE.test(content.slice(index + length, index + length + 4))
+  );
+}
+// A bare number is a px length only in JS/TS (React style objects), never in CSS.
+const JS_FILE_RE = /\.[cm]?[jt]sx?$/i;
 const MOTION_DURATION_RE = /duration:\s*([\d.]+)(ms|s)?/gi;
 const MOTION_EASE_RE = /ease:\s*['"]([\w-]+)['"]/gi;
 const MOTION_DELAY_RE = /delay:\s*([\d.]+)(ms|s)?/gi;
@@ -38,6 +82,96 @@ const MOTION_SPRING_RE = /\b(mass|stiffness|damping):\s*([\d.]+)/gi;
 
 function lineNumberAt(content: string, index: number): number {
   return content.slice(0, index).split("\n").length;
+}
+
+// A usage at an exact position. A literal that fills a whole `[...]` is a
+// Tailwind arbitrary value and needs a type-hinted fix (see FixStyle).
+function usageAt(
+  file: string,
+  content: string,
+  index: number,
+  kind: RawUsage["kind"],
+  literal: string,
+  rawValue: string,
+  fixStyle?: FixStyle
+): RawUsage {
+  const wholeBracket = content[index - 1] === "[" && content[index + literal.length] === "]";
+  const style = fixStyle ?? (wholeBracket ? "tailwind" : undefined);
+  return {
+    file,
+    line: lineNumberAt(content, index),
+    column: index - (content.lastIndexOf("\n", index - 1) + 1) + 1,
+    literal,
+    kind,
+    rawValue,
+    ...(style ? { fixStyle: style } : {}),
+  };
+}
+
+function isZero(value: string): boolean {
+  return parseFloat(value) === 0;
+}
+
+function collectColors(file: string, content: string, usages: RawUsage[]): void {
+  for (const re of [HEX_RE, COLOR_FUNCTION_RE]) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(content)) !== null) {
+      if (parseAlpha(m[0]) === 0) continue; // fully transparent: the `transparent` idiom
+      if (isAttributeSelectorValue(content, m.index, m[0].length)) continue;
+      const rawValue = m[0].startsWith("#") ? m[0].toLowerCase() : m[0];
+      usages.push(usageAt(file, content, m.index, "color", m[0], rawValue));
+    }
+  }
+}
+
+function collectFontSizes(file: string, content: string, usages: RawUsage[]): void {
+  let m: RegExpExecArray | null;
+  for (const re of [FONT_SIZE_RE, TAILWIND_FONT_SIZE_RE]) {
+    re.lastIndex = 0;
+    while ((m = re.exec(content)) !== null) {
+      const index = m.index + m[0].lastIndexOf(m[1]);
+      usages.push(usageAt(file, content, index, "font-size", m[1], m[1]));
+    }
+  }
+  JSX_FONT_SIZE_RE.lastIndex = 0;
+  while ((m = JSX_FONT_SIZE_RE.exec(content)) !== null) {
+    if (m[2]) {
+      usages.push(usageAt(file, content, m.index + m[0].lastIndexOf(m[2]), "font-size", m[2], m[2]));
+    } else if (JS_FILE_RE.test(file) && !isZero(m[3])) {
+      const index = m.index + m[0].lastIndexOf(m[3]);
+      usages.push(usageAt(file, content, index, "font-size", m[3], `${m[3]}px`, "js-number"));
+    }
+  }
+}
+
+function collectSpacing(file: string, content: string, usages: RawUsage[]): void {
+  let m: RegExpExecArray | null;
+  SPACING_PROPERTY_RE.lastIndex = 0;
+  while ((m = SPACING_PROPERTY_RE.exec(content)) !== null) {
+    const value = m[1];
+    const valueStart = m.index + m[0].length - value.length;
+    const trimmed = value.trim();
+    if (BARE_NUMBER_RE.test(trimmed)) {
+      if (JS_FILE_RE.test(file) && !isZero(trimmed)) {
+        const index = valueStart + value.indexOf(trimmed);
+        usages.push(usageAt(file, content, index, "spacing", trimmed, `${trimmed}px`, "js-number"));
+      }
+      continue;
+    }
+    VALUE_LENGTH_RE.lastIndex = 0;
+    let length: RegExpExecArray | null;
+    while ((length = VALUE_LENGTH_RE.exec(value)) !== null) {
+      if (isZero(length[1])) continue;
+      usages.push(usageAt(file, content, valueStart + length.index, "spacing", length[1], length[1]));
+    }
+  }
+  TAILWIND_SPACING_RE.lastIndex = 0;
+  while ((m = TAILWIND_SPACING_RE.exec(content)) !== null) {
+    if (isZero(m[1])) continue;
+    const index = m.index + m[0].lastIndexOf(m[1]);
+    usages.push(usageAt(file, content, index, "spacing", m[1], m[1]));
+  }
 }
 
 const BLOCK_COMMENT_RE = /\/\*[\s\S]*?\*\//g;
@@ -111,7 +245,7 @@ function collectMotionTimings(file: string, content: string, re: RegExp, usages:
 }
 
 /**
- * Extracts raw color/font-size/motion literals from a single blob of
+ * Extracts raw color/font-size/spacing/motion literals from a single blob of
  * content. Used both by scan.ts's filesystem walk and by crawl.ts's
  * fetched-HTML/CSS path — the same extraction either way, source doesn't
  * matter.
@@ -120,30 +254,11 @@ export function extractFromContent(file: string, rawContent: string): RawUsage[]
   const content = maskNonUsage(rawContent);
   const usages: RawUsage[] = [];
 
-  for (const re of [HEX_RE]) {
-    re.lastIndex = 0;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(content)) !== null) {
-      usages.push({
-        file,
-        line: lineNumberAt(content, m.index),
-        kind: "color",
-        rawValue: m[0].toLowerCase(),
-      });
-    }
-  }
+  collectColors(file, content, usages);
+  collectFontSizes(file, content, usages);
+  collectSpacing(file, content, usages);
 
-  FONT_SIZE_RE.lastIndex = 0;
   let m: RegExpExecArray | null;
-  while ((m = FONT_SIZE_RE.exec(content)) !== null) {
-    usages.push({
-      file,
-      line: lineNumberAt(content, m.index),
-      kind: "font-size",
-      rawValue: m[1],
-    });
-  }
-
   for (const re of [MOTION_DURATION_RE, MOTION_DELAY_RE, MOTION_STAGGER_RE]) {
     collectMotionTimings(file, content, re, usages);
   }

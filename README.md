@@ -26,7 +26,7 @@ Options:
 - `--tokens-studio <path>` — path to a Tokens Studio / W3C Design Tokens JSON export (see below); merged with, and taking precedence over, `@theme` on any path both define
 - `--figma-file <file-key>` — pull color/spacing tokens from a Figma file's Variables (see below); requires an Enterprise Figma plan
 - `--url <page-url>` — scan a deployed page instead of local source (see below); pass a placeholder like `-` for `<target-source-dir>` when using this alone
-- `--apply-fixes` — write near-miss color/font-size suggestions back into source files (see below); not available with `--url`
+- `--apply-fixes` — write near-miss color/font-size/spacing suggestions back into source files (see below); not available with `--url`
 - `--format text|json|markdown` — output format (default: `text`)
 - `--fail-below <0-100>` — exit non-zero if the drift health score falls below this threshold; omit to never fail
 - `--api-key <key>` — upload the result to Maddox Cloud (see below); the `MADDOX_API_KEY` environment variable does the same and is the safer choice, because a flag value can end up in shell history
@@ -41,7 +41,12 @@ With no `@theme` block at all (plain CSS or a Tailwind v3 style setup), the `:ro
 
 Comments and token definitions (a custom property declaration such as `--color-brand: #123456;`) are not usages. A kind of value is only compared when your theme has tokens of that kind, so a project without font-size tokens gets no font-size findings. Font sizes are compared against font-size tokens (`--text-*` or a name containing `font-size`) when the theme has any, and otherwise against non-excluded length tokens (skipping `--radius*`, `--spacing*`, and similar layout namespaces).
 
-Usages detected in source today: hex colors (`#rgb`, `#rrggbb`, including inside Tailwind arbitrary classes like `bg-[#123456]`), CSS `font-size:` declarations, and motion values (duration, delay, stagger, ease, spring). Not yet detected: `rgb()`/`hsl()`/`oklch()` literals in source, 4- and 8-digit hex, JSX `fontSize`, Tailwind `text-[15px]`, and spacing values.
+What Maddox reads from `.ts`, `.tsx`, `.js`, `.jsx` and `.css` files (a `tailwind.config.*` defines tokens, so it is skipped):
+
+- **Colors:** hex (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`) and `rgb()`/`rgba()`/`hsl()`/`hsla()`/`oklch()` with literal values, in CSS, JS strings and Tailwind arbitrary classes (`bg-[#123456]`, `shadow-[0_0_0_1px_#123456]`). Token references such as `hsl(var(--primary))` and fully transparent values are not usages.
+- **Font sizes:** CSS `font-size:`, JSX `fontSize: "15px"` or `fontSize: 15` (a number is px, as in React), and Tailwind `text-[15px]`.
+- **Spacing:** `padding`, `margin` and `gap` (every side, CSS or camelCase) in CSS and style objects, and Tailwind `p-[13px]`, `mt-[1.5rem]`, `gap-x-[6px]`, `space-y-[..]`. Spacing is compared against named spacing tokens (`--spacing-4`, `--space-md`, `--gap-sm`); Tailwind v4's bare `--spacing` base is a multiplier, not a step, so it is not used.
+- **Motion:** duration, delay, stagger, ease and spring values.
 
 For intentional values such as a chart palette or a set of theme presets, opt out in the source with a comment:
 
@@ -112,7 +117,7 @@ Only `COLOR` and `FLOAT`-typed variables are used, resolved to each variable's d
 npx maddox-engine - ./src/app/globals.css --url https://example.com --format text
 ```
 
-`--url` fetches the page's rendered HTML plus every same-origin `<link rel="stylesheet">` it links to, and runs the same color/font-size extraction against what's actually shipped — not what's in the repo at scan time. This is the difference between a source-linter and a production check: a stale CDN cache, a build step that silently drops a token, or a config typo can all make the deployed page diverge from what the source says, and only a live-URL scan catches that.
+`--url` fetches the page's rendered HTML plus every same-origin `<link rel="stylesheet">` it links to, and runs the same color/font-size/spacing/motion extraction against what's actually shipped — not what's in the repo at scan time. This is the difference between a source-linter and a production check: a stale CDN cache, a build step that silently drops a token, or a config typo can all make the deployed page diverge from what the source says, and only a live-URL scan catches that.
 
 Two things don't carry over to `--url` mode:
 
@@ -131,11 +136,19 @@ Every `near-miss` finding with a resolved nearest token gets a `suggestion` — 
 npx maddox-engine ./src ./src/app/globals.css --apply-fixes
 ```
 
-`--apply-fixes` writes every `color`/`font-size` near-miss suggestion straight into the source file it was found in, replacing the exact literal with `var(--token-name)`. It's scoped deliberately narrow:
+`--apply-fixes` writes every `color`/`font-size`/`spacing` near-miss suggestion straight into the source file it was found in, replacing that exact literal, at its exact position on the line, with `var(--token-name)`. The replacement is written to stay valid where it lands:
+
+- Inside a Tailwind arbitrary value, it carries a type hint: `bg-[#123457]` becomes `bg-[color:var(--color-brand)]` and `text-[15px]` becomes `text-[length:var(--text-base)]`, so Tailwind never reads a size as a color.
+- A JS number becomes a string: `fontSize: 15` becomes `fontSize: "var(--text-base)"`.
+- Two equal values on one line are fixed separately, so `fontSize: "15px", padding: "15px"` gets a font-size token and a spacing token.
+
+It's scoped deliberately narrow:
+
+- **Translucent colors are never applied.** `rgba(…, 0.5)` or `#12345680` would lose its transparency as a plain token, so it stays advisory-only.
 
 - **Motion suggestions are never applied.** `motionTokens.path.to.value` assumes an import named `motionTokens` exists in that file's scope — there's no way to verify that per-file, and applying it blind could silently break the build. Motion findings always stay advisory-only.
 - **State findings never had a suggestion to apply.**
-- If a finding's line no longer contains its reported value (the file changed since the scan ran), it's skipped rather than guessed at.
+- If a finding's position no longer holds its reported value (the file changed since the scan ran), it's skipped rather than guessed at.
 - Not available with `--url` — a fetched page has no local file to write to.
 
 This is a real edit to your working tree, not a dry run — review the diff (`git diff`) before committing, same as you would any other automated change.

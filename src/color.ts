@@ -97,3 +97,24 @@ export function parseColor(value: string): Rgb | null {
   if (bareHsl) return parseHsl([bareHsl[1], bareHsl[2], bareHsl[3]]);
   return null;
 }
+
+/** Returns a CSS color's alpha from 0 to 1 (1 when it has none or is not a color). */
+export function parseAlpha(value: string): number {
+  const trimmed = value.trim();
+  const hex = HEX_RE.exec(trimmed);
+  if (hex) {
+    const digits = hex[1];
+    if (digits.length === 4) return parseInt(digits[3] + digits[3], 16) / 255;
+    if (digits.length === 8) return parseInt(digits.slice(6), 16) / 255;
+    return 1;
+  }
+  const fn = FUNCTION_RE.exec(trimmed);
+  const body = fn ? fn[2] : BARE_HSL_RE.test(trimmed) ? trimmed : null;
+  if (!body) return 1;
+  const slash = body.split("/");
+  const commaArgs = body.split(",");
+  const raw = slash.length > 1 ? slash[1].trim() : commaArgs.length === 4 ? commaArgs[3].trim() : null;
+  if (raw === null) return 1;
+  const alpha = raw.endsWith("%") ? parseFloat(raw) / 100 : parseFloat(raw);
+  return Number.isNaN(alpha) ? 1 : Math.min(1, Math.max(0, alpha));
+}

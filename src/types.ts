@@ -15,6 +15,13 @@ export interface GroundTruth {
 // e.g. { "Button": ["disabled", "loading"], "*Input": ["error", "disabled"] }.
 export type StateContract = Record<string, string[]>;
 
+// How a suggestion must be written to stay valid where the literal sits:
+// "tailwind" = the literal is a whole arbitrary-value bracket (`bg-[#123]`),
+// which needs a type hint (`bg-[color:var(--x)]`) because Tailwind cannot
+// infer a var()'s type; "js-number" = a bare JS number (`fontSize: 15`),
+// which must become a quoted string (`fontSize: "var(--x)"`).
+export type FixStyle = "tailwind" | "js-number";
+
 export type Severity = "match" | "near-miss" | "unrecognized" | "missing";
 
 export interface Finding {
@@ -24,6 +31,12 @@ export interface Finding {
   rawValue: string;
   severity: Severity;
   nearestToken?: string;
+  // Exact position and source text of the value (1-based column), so
+  // --apply-fixes edits that one spot rather than every equal string on
+  // the line. Set by extract.ts; absent on state findings.
+  column?: number;
+  literal?: string;
+  fixStyle?: FixStyle;
   // A suggested source replacement for `rawValue`, only ever set for
   // "near-miss" or "match"-adjacent findings with a resolvable
   // nearestToken — see suggestFix.ts. Left undefined (never an empty

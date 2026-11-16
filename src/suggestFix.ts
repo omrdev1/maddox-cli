@@ -1,3 +1,4 @@
+import { parseAlpha } from "./color.js";
 import type { Finding } from "./types.js";
 
 /**
@@ -21,11 +22,18 @@ export function suggestFix(finding: Finding): string | undefined {
   switch (finding.kind) {
     case "color":
     case "font-size":
-    case "spacing":
+    case "spacing": {
+      // A translucent color can't become a plain token without losing its
+      // transparency, so it stays advisory: no suggestion.
+      if (finding.kind === "color" && parseAlpha(finding.rawValue) < 1) return undefined;
       // nearestToken is a "--token-name" CSS custom property name — the
       // replacement is how that token is actually consumed in Tailwind
       // v4 / plain CSS: var(--token-name).
-      return `var(${finding.nearestToken})`;
+      const reference = `var(${finding.nearestToken})`;
+      if (finding.fixStyle === "tailwind") return `${finding.kind === "color" ? "color" : "length"}:${reference}`;
+      if (finding.fixStyle === "js-number") return `"${reference}"`;
+      return reference;
+    }
 
     case "motion": {
       // nearestToken is a dotted motion-token path, e.g.

@@ -4,7 +4,7 @@ import type { Finding, GroundTruth } from "./types.js";
 
 const NEAR_MISS_RGB_THRESHOLD = 25;
 const NEAR_MISS_NUMERIC_THRESHOLD = 0.05; // motion durations/delay/stagger, e.g. seconds
-const NEAR_MISS_FONT_SIZE_PX_THRESHOLD = 2;
+const NEAR_MISS_LENGTH_PX_THRESHOLD = 2; // font sizes and spacing
 // Spring params run on a much larger, param-specific scale than a duration
 // in seconds (stiffness commonly ~50-500, mass ~0.5-5, damping ~5-50) — a
 // single shared absolute threshold would be meaningless across all three,
@@ -160,8 +160,15 @@ function fontSizeCandidates(tokens: GroundTruth["tokens"]): TokenEntry[] {
   return lengths.filter(([name]) => !NON_FONT_SIZE_NAME_RE.test(name));
 }
 
-function diffFontSize(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
-  const candidates = fontSizeCandidates(tokens);
+// Named spacing steps only (`--spacing-4`, `--space-md`, `--gap-sm`). Tailwind
+// v4's bare `--spacing` is a multiplier base, not a step, so it is left out.
+const SPACING_NAME_RE = /^--(?:spacing|space|gap|padding|margin)[-_]./i;
+
+function spacingCandidates(tokens: GroundTruth["tokens"]): TokenEntry[] {
+  return Object.entries(tokens).filter(([name, value]) => SPACING_NAME_RE.test(name) && toPx(value) !== null);
+}
+
+function diffLength(usage: RawUsage, candidates: TokenEntry[]): Finding {
   const exactMatch = candidates.find(([, value]) => value === usage.rawValue);
   if (exactMatch) {
     return { ...usage, severity: "match", nearestToken: exactMatch[0] };
@@ -189,7 +196,7 @@ function diffFontSize(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
   if (nearestDistance === 0) {
     return { ...usage, severity: "match", nearestToken };
   }
-  if (nearestDistance <= NEAR_MISS_FONT_SIZE_PX_THRESHOLD) {
+  if (nearestDistance <= NEAR_MISS_LENGTH_PX_THRESHOLD) {
     return { ...usage, severity: "near-miss", nearestToken };
   }
   return { ...usage, severity: "unrecognized", nearestToken };
@@ -200,6 +207,7 @@ function diffFontSize(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
 function hasTokensFor(kind: RawUsage["kind"], groundTruth: GroundTruth): boolean {
   if (kind === "motion") return groundTruth.motion.length > 0;
   if (kind === "color") return Object.values(groundTruth.tokens).some((value) => parseColor(value) !== null);
+  if (kind === "spacing") return spacingCandidates(groundTruth.tokens).length > 0;
   return fontSizeCandidates(groundTruth.tokens).length > 0;
 }
 
@@ -210,15 +218,7 @@ export function diffUsages(usages: RawUsage[], groundTruth: GroundTruth): Findin
   return usages.filter((usage) => comparableKinds.has(usage.kind)).map((usage) => {
     if (usage.kind === "color") return diffColor(usage, groundTruth.tokens);
     if (usage.kind === "motion") return diffMotion(usage, groundTruth.motion);
-    if (usage.kind === "font-size") return diffFontSize(usage, groundTruth.tokens);
-    // spacing: exact-string match against token values for now
-    const match = Object.entries(groundTruth.tokens).find(
-      ([, value]) => value === usage.rawValue
-    );
-    return {
-      ...usage,
-      severity: match ? "match" : "unrecognized",
-      nearestToken: match?.[0],
-    } satisfies Finding;
+    if (usage.kind === "font-size") return diffLength(usage, fontSizeCandidates(groundTruth.tokens));
+    return diffLength(usage, spacingCandidates(groundTruth.tokens));
   });
 }

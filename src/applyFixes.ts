@@ -81,11 +81,15 @@ export function applyFixes(rootDir: string, findings: Finding[]): ApplyFixesResu
     // that failed.
     const seen = new Set<string>();
     const uniqueFindings = fileFindings.filter((f) => {
-      const key = `${f.line}:${f.rawValue}`;
+      const key = `${f.line}:${f.column ?? ""}:${f.rawValue}`;
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
+
+    // Right to left within a line, so an edit never shifts the column of
+    // a finding still to be applied on the same line.
+    uniqueFindings.sort((a, b) => a.line - b.line || (b.column ?? 0) - (a.column ?? 0));
 
     for (const finding of uniqueFindings) {
       const lineIndex = finding.line - 1;
@@ -94,6 +98,24 @@ export function applyFixes(rootDir: string, findings: Finding[]): ApplyFixesResu
         skipped.push(finding);
         continue;
       }
+
+      // Position-exact path (every finding from extract.ts): replace only the
+      // literal at its own column, so equal text elsewhere on the line, even
+      // the same value as a different kind, is never touched.
+      if (finding.column !== undefined && finding.literal !== undefined) {
+        const start = finding.column - 1;
+        if (line.slice(start, start + finding.literal.length) !== finding.literal) {
+          skipped.push(finding);
+          continue;
+        }
+        lines[lineIndex] = line.slice(0, start) + finding.suggestion! + line.slice(start + finding.literal.length);
+        changed = true;
+        applied.push({ file, line: finding.line, rawValue: finding.rawValue, suggestion: finding.suggestion!, occurrences: 1 });
+        continue;
+      }
+
+      // Findings without a position (built by hand by an API caller) fall
+      // back to replacing the value wherever it appears on its line.
 
       // Hex values are normalized to lowercase during extraction, so match
       // hex literals case-insensitively while guarding against prefix hits

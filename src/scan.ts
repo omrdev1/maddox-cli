@@ -13,10 +13,11 @@ import { createIgnoreMatcher, loadIgnoreFile, type IgnoreMatcher } from "./ignor
 // bug this split exists to prevent.
 
 const SKIP_DIRS = new Set(["node_modules", ".next", ".git", ".turbo", "dist"]);
-const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".css"]);
+const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".css"]);
 // Tests, specs, Storybook files and mocks hold demo and fixture values, not
 // the app's own styling, so scanning them only adds false findings.
-const DEFAULT_IGNORE_PATTERNS = ["*.test.*", "*.spec.*", "*.story.*", "*.stories.*", "__tests__", "__mocks__"];
+// A Tailwind config defines tokens rather than using them, so it is skipped too.
+const DEFAULT_IGNORE_PATTERNS = ["tailwind.config.*", "*.test.*", "*.spec.*", "*.story.*", "*.stories.*", "__tests__", "__mocks__"];
 
 function walkDir(dir: string, rootDir: string, ignore: IgnoreMatcher, out: string[]): void {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -36,7 +37,7 @@ function walkDir(dir: string, rootDir: string, ignore: IgnoreMatcher, out: strin
 }
 
 /**
- * Walks .ts/.tsx/.css files under `rootDir` (skipping node_modules/.next,
+ * Walks .ts/.tsx/.js/.jsx/.css files under `rootDir` (skipping node_modules/.next,
  * test and story files, and anything matched by `.maddoxignore` or `extraIgnorePatterns`) and
  * returns each file's relative path and content. Shared by the
  * token/motion usage scan and the component state-completeness check.
@@ -58,7 +59,7 @@ function readScannedFiles(rootDir: string, extraIgnorePatterns: string[] = []): 
 }
 
 /**
- * Walks .ts/.tsx/.css files under `rootDir` (skipping node_modules/.next
+ * Walks .ts/.tsx/.js/.jsx/.css files under `rootDir` (skipping node_modules/.next
  * and any `.maddoxignore`/`extraIgnorePatterns` match) and extracts raw
  * color/font-size/motion literals with file:line. Source-level scan, not
  * a live-fetched-HTML scan.

@@ -80,7 +80,7 @@ async function main() {
         "(pass a placeholder for <target-source-dir>, e.g. '-', when using --url alone). " +
         "--states has no effect in --url mode: state-completeness is a source-code check.\n" +
         "  --apply-fixes writes near-miss color/font-size/spacing suggestions back into " +
-        "source files (color/font-size/spacing only — motion and state findings are " +
+        "source files (color/font-size/spacing only, never a translucent color — motion and state findings are " +
         "never auto-applied). Not available with --url, which has no source to write to.\n" +
         "  --figma-file <file-key> pulls color/spacing tokens from a Figma file's " +
         "Variables (the file key from its URL). Requires an Enterprise Figma plan and " +
