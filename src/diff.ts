@@ -142,16 +142,22 @@ function toPx(value: string): number | null {
 // Tailwind's `--text-*` namespace, or any name that says "font size"
 // (`--font-size-md`, Tokens Studio's `--fontSizes-base`).
 const FONT_SIZE_NAME_RE = /^--text-|font-?sizes?/i;
+// Non-typography length namespaces (e.g. shadcn's `--radius: 0.5rem`) must
+// never be compared against `font-size` even in the fallback pool.
+const NON_FONT_SIZE_NAME_RE =
+  /(?:^|[-_])(radius|rounded|spacing|space|gap|padding|margin|border|width|height|blur|breakpoint|container)(?:[-_]|$)/i;
 
 type TokenEntry = [name: string, value: string];
 
 // A font size should only drift from font-size tokens, not from a radius or a
 // spacing step that happens to share a length. When the theme names no
-// font-size tokens at all, any length token is still compared.
+// font-size tokens at all, non-excluded length tokens (e.g. `--size-body`)
+// are still compared.
 function fontSizeCandidates(tokens: GroundTruth["tokens"]): TokenEntry[] {
   const lengths = Object.entries(tokens).filter(([, value]) => toPx(value) !== null);
   const named = lengths.filter(([name]) => FONT_SIZE_NAME_RE.test(name));
-  return named.length > 0 ? named : lengths;
+  if (named.length > 0) return named;
+  return lengths.filter(([name]) => !NON_FONT_SIZE_NAME_RE.test(name));
 }
 
 function diffFontSize(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {

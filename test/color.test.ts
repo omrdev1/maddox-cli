@@ -51,6 +51,12 @@ test("matches the browser for chromatic oklch and hsl colors", () => {
   assertClose(parseColor("hsl(0 84.2% 60.2%)"), [239, 68, 68], 1);
 });
 
+test("parses bare HSL triplets used by Tailwind v3 and shadcn :root blocks", () => {
+  assertClose(parseColor("222.2 47.4% 11.2%"), [15, 23, 42], 1);
+  assertClose(parseColor("0 0% 100%"), [255, 255, 255], 0);
+  assertClose(parseColor("263deg 70% 50% / 0.8"), [107, 38, 217], 1);
+});
+
 test("returns null for values that are not a concrete color", () => {
   for (const value of ["var(--background)", "transparent", "currentColor", "red", "oklch(", "#12", "12px", ""]) {
     assert.equal(parseColor(value), null, value);

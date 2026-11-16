@@ -35,11 +35,11 @@ Options:
 
 ### What counts as a finding
 
-Maddox reads your tokens from every `@theme` block (including `@theme inline`) and resolves `var()` references from `:root`, so the shadcn pattern (`--color-background: var(--background)`) works. Token values can be hex, `rgb()`, `hsl()` or `oklch()`. Dark-mode overrides are not read. If no usable tokens are found it exits with an error instead of scoring everything as drift.
+Maddox reads your tokens from every `@theme` block (including `@theme inline`) and resolves `var()` references from `:root`, so the shadcn pattern (`--color-background: var(--background)`) works. Token values can be hex, `rgb()`, `hsl()`, bare HSL triplets (`222.2 47.4% 11.2%`, common in Tailwind v3 / shadcn `:root` blocks), or `oklch()`. Dark-mode overrides are not read. If no usable tokens are found it exits with an error instead of scoring everything as drift.
 
 With no `@theme` block at all (plain CSS or a Tailwind v3 style setup), the `:root` variables are used as the tokens.
 
-Comments and token definitions (a custom property declaration such as `--color-brand: #123456;`) are not usages. A kind of value is only compared when your theme has tokens of that kind, so a project without font-size tokens gets no font-size findings. Font sizes are compared against font-size tokens (`--text-*` or a name containing `font-size`) when the theme has any, and against every length token otherwise.
+Comments and token definitions (a custom property declaration such as `--color-brand: #123456;`) are not usages. A kind of value is only compared when your theme has tokens of that kind, so a project without font-size tokens gets no font-size findings. Font sizes are compared against font-size tokens (`--text-*` or a name containing `font-size`) when the theme has any, and otherwise against non-excluded length tokens (skipping `--radius*`, `--spacing*`, and similar layout namespaces).
 
 For intentional values such as a chart palette or a set of theme presets, opt out in the source with a comment:
 

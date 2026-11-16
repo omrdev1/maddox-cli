@@ -78,8 +78,16 @@ test("Tokens Studio style font size names count as font-size tokens", () => {
   assert.equal(finding.severity, "near-miss");
 });
 
-test("with no font-size named tokens, any length token is still compared", () => {
+test("with no font-size named tokens, non-typography length tokens still compare", () => {
   const [finding] = diffUsages([fontSizeUsage("16px")], { tokens: { "--size-body": "16px" }, motion: [] });
   assert.equal(finding.severity, "match");
   assert.equal(finding.nearestToken, "--size-body");
+});
+
+test("radius and spacing tokens alone do not trigger font-size findings", () => {
+  const findings = diffUsages([fontSizeUsage("2.25rem")], {
+    tokens: { "--radius": "0.5rem", "--spacing-md": "16px" },
+    motion: [],
+  });
+  assert.deepEqual(findings, []);
 });

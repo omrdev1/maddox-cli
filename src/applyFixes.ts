@@ -90,13 +90,34 @@ export function applyFixes(rootDir: string, findings: Finding[]): ApplyFixesResu
     for (const finding of uniqueFindings) {
       const lineIndex = finding.line - 1;
       const line = lines[lineIndex];
-      if (line === undefined || !line.includes(finding.rawValue)) {
+      if (line === undefined) {
         skipped.push(finding);
         continue;
       }
 
-      const occurrences = line.split(finding.rawValue).length - 1;
-      lines[lineIndex] = line.split(finding.rawValue).join(finding.suggestion!);
+      // Hex values are normalized to lowercase during extraction, so match
+      // hex literals case-insensitively while guarding against prefix hits
+      // (e.g. `#fff` must not match inside `#ffffff`).
+      let occurrences = 0;
+      if (/^#[0-9a-f]+$/i.test(finding.rawValue)) {
+        const escaped = finding.rawValue.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp(`${escaped}(?![0-9a-f])`, "gi");
+        const matches = line.match(re);
+        if (!matches || matches.length === 0) {
+          skipped.push(finding);
+          continue;
+        }
+        occurrences = matches.length;
+        lines[lineIndex] = line.replace(re, finding.suggestion!);
+      } else {
+        if (!line.includes(finding.rawValue)) {
+          skipped.push(finding);
+          continue;
+        }
+        occurrences = line.split(finding.rawValue).length - 1;
+        lines[lineIndex] = line.split(finding.rawValue).join(finding.suggestion!);
+      }
+
       changed = true;
       applied.push({
         file,

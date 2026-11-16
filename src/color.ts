@@ -7,6 +7,9 @@ export type Rgb = [number, number, number];
 
 const HEX_RE = /^#([0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const FUNCTION_RE = /^(rgba?|hsla?|oklch)\(\s*(.+?)\s*\)$/i;
+// Tailwind v3 / shadcn `:root` tokens store HSL as bare triplets without `hsl()`,
+// e.g. `--primary: 263 70% 50%;` or `222.2 47.4% 11.2% / 0.8`.
+const BARE_HSL_RE = /^(\d+(?:\.\d+)?(?:deg)?)\s+(\d+(?:\.\d+)?)%\s+(\d+(?:\.\d+)?)%(?:\s*\/\s*[\d.]+%?)?$/i;
 
 function clampChannel(value: number): number {
   return Math.min(255, Math.max(0, Math.round(value)));
@@ -82,10 +85,15 @@ export function parseColor(value: string): Rgb | null {
   if (trimmed.startsWith("#")) return parseHex(trimmed);
 
   const match = FUNCTION_RE.exec(trimmed);
-  if (!match) return null;
-  const args = splitArguments(match[2]);
-  const fn = match[1].toLowerCase();
-  if (fn.startsWith("rgb")) return parseRgb(args);
-  if (fn.startsWith("hsl")) return parseHsl(args);
-  return parseOklch(args);
+  if (match) {
+    const args = splitArguments(match[2]);
+    const fn = match[1].toLowerCase();
+    if (fn.startsWith("rgb")) return parseRgb(args);
+    if (fn.startsWith("hsl")) return parseHsl(args);
+    return parseOklch(args);
+  }
+
+  const bareHsl = BARE_HSL_RE.exec(trimmed);
+  if (bareHsl) return parseHsl([bareHsl[1], bareHsl[2], bareHsl[3]]);
+  return null;
 }
