@@ -220,4 +220,6 @@ Pin `@main` to a specific commit SHA if you want reproducible CI runs immune to 
 
 ## License
 
-MIT
+[MIT](LICENSE), copyright Grafikui Ltd. Contributions are welcome under the same licence, see [CONTRIBUTING.md](CONTRIBUTING.md). Report security problems privately, see [SECURITY.md](SECURITY.md).
+
+"Maddox", "Maddox Engine" and the Maddox logo are trade marks of Grafikui Ltd and are not covered by the MIT License. The hosted service at maddoxengine.com has its own [Terms of Service](https://www.maddoxengine.com/terms) and [Privacy Policy](https://www.maddoxengine.com/privacy).

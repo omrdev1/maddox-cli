@@ -45,7 +45,8 @@
     "tsx": "^4.19.0"
   },
   "devDependencies": {
-    "typescript": "^5.9.0",
-    "@types/node": "^20.0.0"
-  }
+    "@types/node": "^20.0.0",
+    "typescript": "^5.9.0"
+  },
+  "author": "Grafikui Ltd <hello@grafikui.com>"
 }
