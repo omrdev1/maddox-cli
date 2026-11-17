@@ -204,6 +204,8 @@ async function main() {
         "Test, spec and story files are skipped by default.\n" +
         "  With a maddox.config.json in the project ({\"theme\": \"app/globals.css\", \"source\": \"app\"}), run " +
         "`maddox` with no paths; flags still override it.\n" +
+        "  --suggest-tokens [--min-uses N] lists colours used N or more times (default 5) that your theme " +
+        "doesn't name, as a ready-to-paste @theme block with the score you'd get by adding them.\n" +
         "  maddox check <file> [--stdin] [--format text|json] checks one file (or proposed content on stdin) " +
         "against the config's tokens. Local only: no upload, no API key."
     );
