@@ -93,3 +93,15 @@ test("check accepts flags before the file and rejects an unknown format", () =>
     assert.equal(JSON.parse(r.out).file, "component.css");
     assert.equal(run(dir, ["check", "app/component.css", "--format", "yaml"]).code, 2);
   }));
+
+test("check with just a file and no flags checks that file", () =>
+  withProject({ theme: "app/theme.css", source: "app" }, (dir) => {
+    const r = run(dir, ["check", "app/component.css"]);
+    assert.equal(r.code, 1, r.err);
+    assert.match(r.out, /component\.css:\d+ +\[color\] #fafafb/);
+    const stdin = spawnSync(process.execPath, ["--import", import.meta.resolve("tsx"), CLI, "check", "app/new.css", "--stdin"], {
+      cwd: dir, input: ".a { color: #111111; }", encoding: "utf8",
+    });
+    assert.equal(stdin.status, 0, stdin.stderr);
+    assert.match(stdin.stdout, /no drift/);
+  }));

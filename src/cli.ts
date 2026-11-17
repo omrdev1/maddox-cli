@@ -121,7 +121,7 @@ async function checkCommand(args: string[]) {
     console.error(`--format for check must be text or json, got "${format ?? ""}"`);
     process.exit(SCAN_ERROR);
   }
-  const file = args.find((a, i) => !a.startsWith("--") && i !== formatAt + 1);
+  const file = args.find((a, i) => !a.startsWith("--") && (formatAt === -1 || i !== formatAt + 1));
   if (!file) {
     console.error("Usage: maddox check <file> [--stdin] [--format text|json]");
     process.exit(SCAN_ERROR);
