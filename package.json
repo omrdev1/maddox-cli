@@ -1,7 +1,7 @@
 {
   "name": "maddox-engine",
   "version": "0.10.0",
-  "description": "Scans source code or a live deployed page for design-token, motion, and component-state drift against your own design system — the same engine behind Maddox Engine's CI checks.",
+  "description": "Scans source code or a live deployed page for design-token, motion, and component-state drift against your own design system \u2014 the same engine behind Maddox Engine's CI checks.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/core.js",
@@ -14,7 +14,8 @@
     "./client": {
       "types": "./dist/client.d.ts",
       "default": "./dist/client.js"
-    }
+    },
+    "./package.json": "./package.json"
   },
   "bin": {
     "maddox": "dist/cli.js"
@@ -44,7 +45,8 @@
     "scan": "tsx src/cli.ts",
     "lint": "tsc --noEmit",
     "test": "tsx --test test/*.test.ts",
-    "prepublishOnly": "npm run lint && npm test && npm run build"
+    "prepublishOnly": "npm run lint && npm test && npm run build",
+    "prepare": "npm run build"
   },
   "dependencies": {},
   "devDependencies": {

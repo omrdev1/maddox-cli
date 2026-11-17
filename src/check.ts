@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, statSync } from "node:fs";
-import { dirname, relative, resolve, sep } from "node:path";
+import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
+import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { checkContent } from "./core.js";
 import { loadGroundTruth, loadStateContract } from "./groundTruth.js";
 import { ConfigError, CONFIG_FILE, findConfig, loadConfig, resolveInside } from "./config.js";
@@ -26,6 +26,10 @@ export function runCheck(input: { file: string; content?: string; cwd: string })
       return { status: "error", message: `No ${CONFIG_FILE} found above ${input.file}. Create one with at least {"theme": "path/to/theme.css"}.` };
     }
     const config = loadConfig(configPath);
+    // A full scan skips symlinked files, so a single-file check does too.
+    if (existsSync(target) && lstatSync(target).isSymbolicLink()) {
+      return { status: "skipped", file: input.file, reason: "a symlink, which a full scan skips" };
+    }
     const path = resolveInside(config.root, target);
 
     let content = input.content;
@@ -37,7 +41,7 @@ export function runCheck(input: { file: string; content?: string; cwd: string })
     if (Buffer.byteLength(content) > MAX_CHECK_BYTES) return { status: "error", message: `${input.file} is too large to check (over 1 MB).` };
 
     const rel = relative(config.source, path);
-    if (rel === "" || rel.startsWith("..") || rel.split(sep).includes("..")) {
+    if (rel === "" || isAbsolute(rel) || rel.split(sep).includes("..")) {
       return { status: "skipped", file: relative(config.root, path), reason: "outside the source folder in maddox.config.json" };
     }
 

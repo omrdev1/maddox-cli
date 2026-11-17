@@ -115,8 +115,13 @@ async function readStdin(): Promise<string> {
 // project's tokens, found through maddox.config.json. Local only, no API key.
 // Exit 0: no drift (or file skipped). 1: drift found. 2: could not check.
 async function checkCommand(args: string[]) {
-  const file = args.find((a) => !a.startsWith("--"));
-  const format = args.includes("--format") ? args[args.indexOf("--format") + 1] : "text";
+  const formatAt = args.indexOf("--format");
+  const format = formatAt === -1 ? "text" : args[formatAt + 1];
+  if (format !== "text" && format !== "json") {
+    console.error(`--format for check must be text or json, got "${format ?? ""}"`);
+    process.exit(SCAN_ERROR);
+  }
+  const file = args.find((a, i) => !a.startsWith("--") && i !== formatAt + 1);
   if (!file) {
     console.error("Usage: maddox check <file> [--stdin] [--format text|json]");
     process.exit(SCAN_ERROR);
@@ -128,15 +133,37 @@ async function checkCommand(args: string[]) {
   process.exit(result.status === "error" ? SCAN_ERROR : result.status === "checked" && result.findings.length > 0 ? 1 : 0);
 }
 
+// Names kept for upcoming subcommands, so their meaning never changes under
+// someone's existing script. A folder with one of these names is scanned as ./name.
+const RESERVED_SUBCOMMANDS = new Set(["hook", "mcp", "init"]);
+
+function packageVersion(): string {
+  try {
+    return (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf-8")) as { version: string }).version;
+  } catch {
+    return "unknown";
+  }
+}
+
 async function main() {
+  const first = process.argv[2];
+  if (first === "--version" || first === "-v") {
+    console.log(packageVersion());
+    return;
+  }
   // Subcommands come first. A folder that shares a subcommand's name can be
   // scanned as ./check.
-  if (process.argv[2] === "check") return checkCommand(process.argv.slice(3));
+  if (first === "check") return checkCommand(process.argv.slice(3));
+  if (first && RESERVED_SUBCOMMANDS.has(first)) {
+    console.error(`"maddox ${first}" is not available in this version yet. To scan a folder named ${first}, use ./${first}.`);
+    process.exit(SCAN_ERROR);
+  }
+  const wantsHelp = process.argv.includes("--help") || process.argv.includes("-h");
 
   // With no paths given, read them from maddox.config.json. Flags still win.
   let config: MaddoxConfig | undefined;
   const hasPositional = process.argv[2] !== undefined && !process.argv[2].startsWith("--");
-  if (!hasPositional) {
+  if (!hasPositional && !wantsHelp) {
     const configPath = findConfig(process.cwd());
     if (configPath) {
       try {
@@ -148,12 +175,13 @@ async function main() {
       }
     }
   }
-  const targetDir = config ? config.source : process.argv[2];
-  const themeCssPath = config ? config.theme : process.argv[3];
+  // Without a config, the paths must come first; never read a flag's value as a path.
+  const targetDir = config ? config.source : hasPositional ? process.argv[2] : "";
+  const themeCssPath = config ? config.theme : hasPositional ? process.argv[3] : "";
   const url = flagValue("--url");
 
-  if (!themeCssPath || (!targetDir && !url)) {
-    console.error(
+  if (wantsHelp || !themeCssPath || (!targetDir && !url)) {
+    (wantsHelp ? console.log : console.error)(
       "Usage: maddox <target-source-dir> <path-to-globals.css-with-@theme-block> " +
         "[--project <name>] [--motion <path-to-motion-tokens.json>] " +
         "[--states <path-to-state-contract.json>] [--format text|json|markdown] " +
@@ -178,7 +206,7 @@ async function main() {
         "  maddox check <file> [--stdin] [--format text|json] checks one file (or proposed content on stdin) " +
         "against the config's tokens. Local only: no upload, no API key."
     );
-    process.exit(SCAN_ERROR);
+    process.exit(wantsHelp ? 0 : SCAN_ERROR);
   }
 
   const projectName = flagValue("--project") ?? config?.project ?? (url ? new URL(url).hostname : targetDir.split("/").pop()) ?? "unnamed-project";

@@ -1,5 +1,6 @@
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { homedir } from "node:os";
 
 export const CONFIG_FILE = "maddox.config.json";
 
@@ -26,7 +27,9 @@ export function findConfig(startDir: string): string | null {
   for (;;) {
     const candidate = join(dir, CONFIG_FILE);
     if (existsSync(candidate)) return candidate;
-    if (existsSync(join(dir, ".git"))) return null; // repository root: don't read a parent project's config
+    // Stop at the repository root or the home folder: never read a config
+    // belonging to a parent project, the home folder or the system.
+    if (existsSync(join(dir, ".git")) || dir === homedir()) return null;
     const parent = dirname(dir);
     if (parent === dir) return null;
     dir = parent;

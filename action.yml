@@ -51,6 +51,8 @@ runs:
     - name: Install maddox
       shell: bash
       working-directory: ${{ github.action_path }}
+      # Installs build tools and compiles dist/ (the package's prepare
+      # script), so the Action runs the same JavaScript that npm ships.
       run: npm install --no-save
 
     - name: Run Maddox scan
@@ -102,7 +104,7 @@ runs:
         # before the build is allowed to fail, otherwise a reviewer sees
         # a red check with no explanation of what drifted.
         set +e
-        npx tsx "${{ github.action_path }}/src/cli.ts" \
+        node "${{ github.action_path }}/dist/cli.js" \
           "$TARGET_DIR" \
           "${{ inputs.theme-css }}" \
           $MOTION_FLAG \
