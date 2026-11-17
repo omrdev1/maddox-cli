@@ -24,6 +24,9 @@ export type FixStyle = "tailwind" | "js-number";
 
 export type Severity = "match" | "near-miss" | "unrecognized" | "missing";
 
+/** What a colour value is used for, read from the property it sits in. */
+export type ColorRole = "bg" | "text" | "border";
+
 export interface Finding {
   file: string;
   line: number;
@@ -37,6 +40,9 @@ export interface Finding {
   column?: number;
   literal?: string;
   fixStyle?: FixStyle;
+  // What the colour is used for, from the property it sits in. Used to
+  // avoid suggesting, say, a text token for a background.
+  role?: ColorRole;
   // A suggested source replacement for `rawValue`, only ever set for
   // "near-miss" or "match"-adjacent findings with a resolvable
   // nearestToken — see suggestFix.ts. Left undefined (never an empty

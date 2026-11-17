@@ -284,11 +284,18 @@ async function main() {
     if (url) {
       console.error("\n--apply-fixes has no effect with --url: there is no local source to write to.");
     } else {
-      const { applied, skipped } = applyFixes(targetDir, findings);
+      const { applied, skipped, held } = applyFixes(targetDir, findings);
       if (applied.length > 0) {
         console.error(`\nApplied ${applied.length} fix${applied.length === 1 ? "" : "es"}:`);
         for (const fix of applied) {
           console.error(`  ${fix.file}:${fix.line}  ${fix.rawValue} → ${fix.suggestion}`);
+        }
+      }
+      if (held.length > 0) {
+        const why = { animation: "inside an animation (var() can't be animated)", gradient: "would flatten a gradient", email: "in an email template (no CSS variables)" };
+        console.error(`\nHeld ${held.length} fix${held.length === 1 ? "" : "es"} for you to decide:`);
+        for (const { finding, reason } of held) {
+          console.error(`  ${finding.file}:${finding.line}  ${finding.rawValue} → ${finding.suggestion}  (${why[reason]})`);
         }
       }
       const motionOrStateSkipped = skipped.filter((f) => f.kind === "motion" || f.kind === "state").length;

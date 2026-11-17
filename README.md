@@ -186,6 +186,10 @@ npx maddox-engine ./src ./src/app/globals.css --apply-fixes
 It's scoped deliberately narrow:
 
 - **Translucent colors are never applied.** `rgba(…, 0.5)` or `#12345680` would lose its transparency as a plain token, so it stays advisory-only.
+- **Opaque and translucent colors are never matched to each other.** `#ffffff` is not `rgba(255, 255, 255, 0.06)`, however close the channels are.
+- **A token is suggested only where its name fits.** A background isn't pointed at a token named for text (`--color-text-*`, `--color-ink`), and so on for text and borders. Names that say nothing about their use (`--color-brand`, `--color-hw-body`) fit anywhere.
+- **Some fixes are held, not applied, and listed with the reason:** values inside Framer Motion animation props or GSAP tweens (they can't animate `var()`), fixes that would make neighbouring stops of a gradient the same token (flattening a deliberate shade-to-shade gradient), and anything in an email or HTML template (email clients don't support CSS variables).
+- **Token references are already correct** and are never listed as fixes.
 
 - **Motion suggestions are never applied.** `motionTokens.path.to.value` assumes an import named `motionTokens` exists in that file's scope — there's no way to verify that per-file, and applying it blind could silently break the build. Motion findings always stay advisory-only.
 - **State findings never had a suggestion to apply.**

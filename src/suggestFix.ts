@@ -1,4 +1,5 @@
 import { parseAlpha } from "./color.js";
+import { roleConflicts } from "./tokenRoles.js";
 import type { Finding } from "./types.js";
 
 /**
@@ -18,6 +19,10 @@ import type { Finding } from "./types.js";
 export function suggestFix(finding: Finding): string | undefined {
   if (!finding.nearestToken) return undefined;
   if (finding.severity !== "near-miss" && finding.severity !== "match") return undefined;
+  // Already a token reference: nothing to fix.
+  if (finding.rawValue.startsWith("var(")) return undefined;
+  // A background pointed at a text token (or similar) is advice, not a fix.
+  if (roleConflicts(finding.role, finding.nearestToken)) return undefined;
 
   switch (finding.kind) {
     case "color":

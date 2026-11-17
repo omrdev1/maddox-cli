@@ -1,4 +1,5 @@
-import { parseColor, type Rgb } from "./color.js";
+import { parseAlpha, parseColor, type Rgb } from "./color.js";
+import { roleConflicts } from "./tokenRoles.js";
 import type { RawUsage } from "./extract.js";
 import type { Finding, GroundTruth } from "./types.js";
 
@@ -19,32 +20,36 @@ function colorDistance(a: Rgb, b: Rgb): number {
   return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
 }
 
+// Opaque and translucent colours are different decisions: #ffffff is not
+// rgba(255,255,255,0.06), however close the RGB channels are.
+const ALPHA_TOLERANCE = 0.02;
+
 function diffColor(usage: LiteralUsage, tokens: GroundTruth["tokens"]): Finding {
   const usageRgb = parseColor(usage.rawValue);
   if (!usageRgb) {
     return { ...usage, severity: "unrecognized" };
   }
+  const usageAlpha = parseAlpha(usage.rawValue);
 
-  let nearestToken: string | undefined;
-  let nearestDistance = Infinity;
-
+  // Nearest overall, and nearest whose name fits the colour's role (a
+  // background shouldn't be pointed at a text token).
+  let nearest: { name: string; distance: number } | undefined;
+  let nearestFitting: { name: string; distance: number } | undefined;
   for (const [name, value] of Object.entries(tokens)) {
     const tokenRgb = parseColor(value);
-    if (!tokenRgb) continue;
+    if (!tokenRgb || Math.abs(parseAlpha(value) - usageAlpha) > ALPHA_TOLERANCE) continue;
     const distance = colorDistance(usageRgb, tokenRgb);
-    if (distance < nearestDistance) {
-      nearestDistance = distance;
-      nearestToken = name;
+    if (!nearest || distance < nearest.distance) nearest = { name, distance };
+    if (!roleConflicts(usage.role, name) && (!nearestFitting || distance < nearestFitting.distance)) {
+      nearestFitting = { name, distance };
     }
   }
+  if (!nearest) return { ...usage, severity: "unrecognized" };
 
-  if (nearestDistance === 0) {
-    return { ...usage, severity: "match", nearestToken };
-  }
-  if (nearestDistance <= NEAR_MISS_RGB_THRESHOLD) {
-    return { ...usage, severity: "near-miss", nearestToken };
-  }
-  return { ...usage, severity: "unrecognized", nearestToken };
+  const best = nearestFitting && nearestFitting.distance <= NEAR_MISS_RGB_THRESHOLD ? nearestFitting : nearest;
+  if (best.distance === 0) return { ...usage, severity: "match", nearestToken: best.name };
+  if (best.distance <= NEAR_MISS_RGB_THRESHOLD) return { ...usage, severity: "near-miss", nearestToken: best.name };
+  return { ...usage, severity: "unrecognized", nearestToken: best.name };
 }
 
 // Only these leaf names represent a duration in seconds — comparing a

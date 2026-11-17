@@ -19,6 +19,63 @@ export interface AppliedFix {
   occurrences: number;
 }
 
+export type HoldReason = "animation" | "gradient" | "email";
+
+export interface HeldFix {
+  finding: Finding;
+  // animation: inside a Framer Motion prop or GSAP tween, which can't animate var().
+  // gradient: the fix would make two neighbouring gradient stops identical.
+  // email: an email or HTML template, where clients don't support CSS variables.
+  reason: HoldReason;
+}
+
+// Framer Motion animation props and GSAP tweens interpolate literal colours;
+// a var() there makes the animation jump instead of fade.
+const ANIMATION_RE = /\b(?:animate|initial|exit|whileHover|whileTap|whileInView|whileFocus|whileDrag)\s*=\s*\{|\.(?:to|from|fromTo|set)\s*\(|\bgsap\b|\buseSpring\s*\(|\bkeyframes\s*:/;
+// Email clients don't support CSS variables.
+const EMAIL_TEMPLATE_RE = /<(?:html|table|tbody)\b|from\s+["'](?:resend|nodemailer|@react-email\/[^"']*)["']/;
+const GRADIENT_RE = /(?:repeating-)?(?:linear|radial|conic)-gradient\(/g;
+
+function gradientSpans(line: string): [number, number][] {
+  const spans: [number, number][] = [];
+  GRADIENT_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = GRADIENT_RE.exec(line)) !== null) {
+    let depth = 0;
+    let end = line.length;
+    for (let i = m.index + m[0].length - 1; i < line.length; i++) {
+      if (line[i] === "(") depth++;
+      else if (line[i] === ")" && --depth === 0) {
+        end = i + 1;
+        break;
+      }
+    }
+    spans.push([m.index, end]);
+  }
+  return spans;
+}
+
+const tokenOf = (text: string) => /var\((--[\w-]+)\)/.exec(text)?.[1] ?? text.toLowerCase();
+
+/**
+ * Fixable findings on a line whose fixes would make two neighbouring stops of
+ * one gradient identical (a deliberate shade-to-shade gradient flattened into
+ * one colour). `all` is every colour finding on the line, fixable or not.
+ */
+function collapsingGradientFixes(line: string, all: Finding[], fixable: Set<Finding>): Finding[] {
+  const held: Finding[] = [];
+  for (const [start, end] of gradientSpans(line)) {
+    const stops = all
+      .filter((f) => f.kind === "color" && f.column !== undefined && f.column - 1 >= start && f.column - 1 < end)
+      .sort((a, b) => (a.column ?? 0) - (b.column ?? 0));
+    const before = stops.map((f) => tokenOf(f.rawValue));
+    const after = stops.map((f, i) => (fixable.has(f) && f.suggestion ? tokenOf(f.suggestion) : before[i]));
+    const collapses = after.some((v, i) => i > 0 && v === after[i - 1] && before[i] !== before[i - 1]);
+    if (collapses) held.push(...stops.filter((f) => fixable.has(f)));
+  }
+  return held;
+}
+
 export interface ApplyFixesResult {
   applied: AppliedFix[];
   // Findings that had a suggestion but were skipped — motion (unsafe
@@ -26,6 +83,8 @@ export interface ApplyFixesResult {
   // contains rawValue (the file changed since the scan ran; applying
   // blind here risks touching the wrong text).
   skipped: Finding[];
+  // Fixes deliberately not applied, with the reason, for a person to decide.
+  held: HeldFix[];
 }
 
 /**
@@ -46,6 +105,9 @@ export interface ApplyFixesResult {
 export function applyFixes(rootDir: string, findings: Finding[]): ApplyFixesResult {
   const applied: AppliedFix[] = [];
   const skipped: Finding[] = [];
+  const held: HeldFix[] = [];
+  const allByFile = new Map<string, Finding[]>();
+  for (const finding of findings) allByFile.set(finding.file, [...(allByFile.get(finding.file) ?? []), finding]);
 
   const byFile = new Map<string, Finding[]>();
   for (const finding of findings) {
@@ -68,8 +130,35 @@ export function applyFixes(rootDir: string, findings: Finding[]): ApplyFixesResu
       continue;
     }
 
+    if (EMAIL_TEMPLATE_RE.test(content)) {
+      held.push(...fileFindings.map((finding) => ({ finding, reason: "email" as const })));
+      continue;
+    }
+
     const lines = content.split("\n");
     let changed = false;
+
+    // Hold fixes in animations and in gradients they would flatten.
+    const heldHere = new Set<Finding>();
+    const fixableSet = new Set(fileFindings);
+    for (const finding of fileFindings) {
+      const text = lines[finding.line - 1];
+      if (text !== undefined && ANIMATION_RE.test(text)) {
+        held.push({ finding, reason: "animation" });
+        heldHere.add(finding);
+      }
+    }
+    const lineNumbers = new Set(fileFindings.map((f) => f.line));
+    for (const n of lineNumbers) {
+      const text = lines[n - 1];
+      if (text === undefined) continue;
+      const onLine = (allByFile.get(file) ?? []).filter((f) => f.line === n);
+      for (const finding of collapsingGradientFixes(text, onLine, fixableSet)) {
+        if (heldHere.has(finding)) continue;
+        held.push({ finding, reason: "gradient" });
+        heldHere.add(finding);
+      }
+    }
 
     // Dedupe by (line, rawValue): the replace below already handles every
     // occurrence of a value on its line in one pass, so if the scan
@@ -80,7 +169,7 @@ export function applyFixes(rootDir: string, findings: Finding[]): ApplyFixesResu
     // replace and land in `skipped`, misreporting an applied fix as one
     // that failed.
     const seen = new Set<string>();
-    const uniqueFindings = fileFindings.filter((f) => {
+    const uniqueFindings = fileFindings.filter((f) => !heldHere.has(f)).filter((f) => {
       const key = `${f.line}:${f.column ?? ""}:${f.rawValue}`;
       if (seen.has(key)) return false;
       seen.add(key);
@@ -155,5 +244,5 @@ export function applyFixes(rootDir: string, findings: Finding[]): ApplyFixesResu
     }
   }
 
-  return { applied, skipped };
+  return { applied, skipped, held };
 }

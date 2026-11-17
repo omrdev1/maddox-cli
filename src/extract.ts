@@ -1,5 +1,5 @@
 import { parseAlpha } from "./color.js";
-import type { FixStyle } from "./types.js";
+import type { FixStyle, ColorRole } from "./types.js";
 
 // Browser-safe extraction — no Node built-ins (fs/path), so this module
 // (and anything that only imports from it) can be bundled into a "use
@@ -23,6 +23,7 @@ export interface RawUsage {
   column?: number;
   literal?: string;
   fixStyle?: FixStyle;
+  role?: ColorRole;
   // Only set for spring params (mass/stiffness/damping) — these share no
   // common numeric range (stiffness commonly ~50-500, mass ~0.5-5, damping
   // ~5-50), so pure numeric-proximity matching across all motion tokens
@@ -117,6 +118,21 @@ function isZero(value: string): boolean {
   return parseFloat(value) === 0;
 }
 
+// The last property name before a colour on its line says what it's for:
+// `background: linear-gradient(#111, ...)`, `bg-[#111]`, `color: #111`,
+// `text-[#111]`, `borderColor: "#111"`. Shadows and others give no role.
+const ROLE_KEYWORD_RE = /(background(?:-color|Color)?|\bbg-|\bfill\b|border(?:-(?:top|right|bottom|left))?(?:-color|Color)?|\bstroke\b|outline(?:-color|Color)?|\bcolor\b|\btext-)/gi;
+
+export function colorRoleAt(content: string, index: number): ColorRole | undefined {
+  const prefix = content.slice(content.lastIndexOf("\n", index - 1) + 1, index);
+  let last: string | undefined;
+  for (const m of prefix.matchAll(ROLE_KEYWORD_RE)) last = m[1].toLowerCase();
+  if (!last) return undefined;
+  if (last.startsWith("background") || last === "bg-" || last === "fill") return "bg";
+  if (last.startsWith("border") || last === "stroke" || last.startsWith("outline")) return "border";
+  return "text";
+}
+
 function collectColors(file: string, content: string, usages: RawUsage[]): void {
   for (const re of [HEX_RE, COLOR_FUNCTION_RE]) {
     re.lastIndex = 0;
@@ -125,7 +141,8 @@ function collectColors(file: string, content: string, usages: RawUsage[]): void 
       if (parseAlpha(m[0]) === 0) continue; // fully transparent: the `transparent` idiom
       if (isAttributeSelectorValue(content, m.index, m[0].length)) continue;
       const rawValue = m[0].startsWith("#") ? m[0].toLowerCase() : m[0];
-      usages.push(usageAt(file, content, m.index, "color", m[0], rawValue));
+      const role = colorRoleAt(content, m.index);
+      usages.push({ ...usageAt(file, content, m.index, "color", m[0], rawValue), ...(role ? { role } : {}) });
     }
   }
 }
