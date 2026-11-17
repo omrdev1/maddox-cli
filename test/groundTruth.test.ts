@@ -94,6 +94,19 @@ test("when an @theme block exists, :root variables are only used to resolve it",
   assert.deepEqual(parseThemeCss(css), { "--color-a": "#000000" });
 });
 
+test("an @theme block with no colour or size tokens (fonts only) falls back to :root for the tokens", () => {
+  const css = `
+    @theme { --font-sans: 'Barlow', system-ui, sans-serif; }
+    :root { --accent-teal: #00d4a0; --bg-dark: #242424; --gap: 16px; --soft: var(--accent-teal); }`;
+  assert.deepEqual(parseThemeCss(css), {
+    "--font-sans": "'Barlow', system-ui, sans-serif",
+    "--accent-teal": "#00d4a0",
+    "--bg-dark": "#242424",
+    "--gap": "16px",
+    "--soft": "#00d4a0",
+  });
+});
+
 test("a file with neither @theme nor :root yields no tokens", () => {
   assert.deepEqual(parseThemeCss(".x { color: red; }"), {});
 });

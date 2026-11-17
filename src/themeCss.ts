@@ -94,8 +94,9 @@ function resolveVariable(
  * block (including `inline`, `static` and friends) and resolves `var()`
  * references against `:root`, so the common shadcn pattern
  * (`--color-background: var(--background)` with the value in `:root`)
- * yields real values. With no @theme block at all, the `:root` variables
- * are the tokens. Dark-mode overrides are not read. A token whose
+ * yields real values. With no @theme block at all, or one that defines no
+ * colours or sizes, the `:root` variables are the tokens. Dark-mode
+ * overrides are not read. A token whose
  * reference cannot be resolved is dropped rather than kept as text.
  */
 export function parseThemeCss(css: string): TokenMap {
@@ -111,16 +112,27 @@ export function parseThemeCss(css: string): TokenMap {
     }
   }
 
+  const lookup = { ...rootVars, ...themeVars };
+  const resolveAll = (declared: TokenMap): TokenMap => {
+    const out: TokenMap = {};
+    for (const [name, value] of Object.entries(declared)) {
+      const resolved = resolveReferences(value, lookup, new Set([name]));
+      if (resolved !== null) out[name] = resolved;
+    }
+    return out;
+  };
+
   // Without any @theme block (plain CSS, Tailwind v3 style), the :root
   // variables are the design tokens themselves.
-  const declared = hasThemeBlock ? themeVars : rootVars;
-  const lookup = { ...rootVars, ...themeVars };
-  const tokens: TokenMap = {};
-  for (const [name, value] of Object.entries(declared)) {
-    const resolved = resolveReferences(value, lookup, new Set([name]));
-    if (resolved !== null) tokens[name] = resolved;
-  }
-  return tokens;
+  if (!hasThemeBlock) return resolveAll(rootVars);
+
+  // An @theme block that defines no colours or sizes (often fonts only) means
+  // the palette lives in :root, so those variables count as tokens too.
+  // Otherwise :root only resolves @theme references, so stray helper
+  // variables never count as official values.
+  const themeTokens = resolveAll(themeVars);
+  if (hasComparableTokens(themeTokens)) return themeTokens;
+  return { ...themeTokens, ...resolveAll(rootVars) };
 }
 
 /** True when at least one token is a color or a length the diff engine can compare. */

@@ -64,7 +64,7 @@ Requires Node 20 or later.
 
 ### What counts as a finding
 
-Maddox reads your tokens from every `@theme` block (including `@theme inline`) and resolves `var()` references from `:root`, so the shadcn pattern (`--color-background: var(--background)`) works. Token values can be hex, `rgb()`, `hsl()`, bare HSL triplets (`222.2 47.4% 11.2%`, common in Tailwind v3 / shadcn `:root` blocks), or `oklch()`. Dark-mode overrides are not read. If no usable tokens are found it exits with an error instead of scoring everything as drift.
+Maddox reads your tokens from every `@theme` block (including `@theme inline`) and resolves `var()` references from `:root`, so the shadcn pattern (`--color-background: var(--background)`) works. Projects that keep their palette in plain `:root` variables are read too: when there's no `@theme` block, or the `@theme` block defines no colours or sizes (fonts only, for example), the `:root` variables are the tokens. Token values can be hex, `rgb()`, `hsl()`, bare HSL triplets (`222.2 47.4% 11.2%`, common in Tailwind v3 / shadcn `:root` blocks), or `oklch()`. Dark-mode overrides are not read. If no usable tokens are found it exits with an error instead of scoring everything as drift.
 
 With no `@theme` block at all (plain CSS or a Tailwind v3 style setup), the `:root` variables are used as the tokens.
 
