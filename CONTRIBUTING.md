@@ -13,6 +13,10 @@ This project is licensed under the [MIT License](LICENSE), copyright Grafikui Lt
 3. Run `npx tsc --noEmit` to type-check.
 4. Keep changes focused: one fix or feature per pull request.
 
+## Releases
+
+Each release has an exact tag (`v0.9.0`) and moves the major tag (`v0`) to it, so Action users on `@v0` get compatible changes automatically. A change that breaks existing workflows gets a new major tag instead.
+
 ## Security problems
 
 Do not report security problems in a pull request or anywhere public. See [SECURITY.md](SECURITY.md).

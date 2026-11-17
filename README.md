@@ -207,7 +207,7 @@ This repo is also a GitHub Action — `omrdev1/maddox-cli` — that runs a scan,
 
 ```yaml
 - uses: actions/checkout@v4
-- uses: omrdev1/maddox-cli@main
+- uses: omrdev1/maddox-cli@v0
   with:
     target-dir: src
     theme-css: src/app/globals.css
@@ -242,10 +242,10 @@ Inputs:
 - `figma-file` / `figma-token` / `figma-token-type` — pull tokens from a Figma file's Variables; requires an Enterprise Figma plan. `figma-token` should be a secret (`${{ secrets.FIGMA_TOKEN }}`), never a literal value.
 - `url` — a deployed page URL to scan instead of local source
 - `github-token` *(required)* — for posting the PR comment, usually `${{ secrets.GITHUB_TOKEN }}`
-- `fail-below` — fail the build below this health score; omit for comment-only (unless your workspace has [central rules](#central-rules-scale)).. If the scan can't run (for example, a wrong `theme-css` path), the check fails only when `fail-below` or `api-key` is set
+- `fail-below` — fail the build below this health score; omit for comment-only (unless your workspace has [central rules](#central-rules-scale)). If the scan can't run (for example, a wrong `theme-css` path), the check fails only when `fail-below` or `api-key` is set.
 - `api-key` / `api-url` — optional, upload results to a [Maddox Engine](https://www.maddoxengine.com) dashboard account for scan history and drift trends across projects (a separate hosted product, not required to use the Action itself). When an upload succeeds, the PR comment links to the run on the dashboard. The PR comment is updated in place on every push, never duplicated.
 
-Pin `@main` to a specific commit SHA if you want reproducible CI runs immune to changes on this branch.
+`@v0` follows every compatible 0.x release, so you get fixes without editing your workflow. For fully reproducible runs, pin an exact release such as `@v0.9.0` or a commit SHA. `@main` is the development branch and can change at any time.
 
 ## License
 
