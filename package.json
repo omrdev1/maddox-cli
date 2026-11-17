@@ -1,28 +1,31 @@
 {
   "name": "maddox-engine",
   "version": "0.9.0",
-  "description": "Scans source code or a live deployed page for design-token, motion, and component-state drift against your own design system — the same engine behind Maddox Engine's CI checks.",
+  "description": "Scans source code or a live deployed page for design-token, motion, and component-state drift against your own design system \u2014 the same engine behind Maddox Engine's CI checks.",
   "license": "MIT",
   "type": "module",
-  "main": "./src/core.ts",
-  "types": "./src/core.ts",
+  "main": "./dist/core.js",
+  "types": "./dist/core.d.ts",
   "exports": {
     ".": {
-      "types": "./src/core.ts",
-      "default": "./src/core.ts"
+      "types": "./dist/core.d.ts",
+      "default": "./dist/core.js"
     },
     "./client": {
-      "types": "./src/client.ts",
-      "default": "./src/client.ts"
+      "types": "./dist/client.d.ts",
+      "default": "./dist/client.js"
     }
   },
   "bin": {
-    "maddox": "src/cli.ts"
+    "maddox": "dist/cli.js"
   },
   "files": [
-    "src",
+    "dist",
     "fixtures"
   ],
+  "engines": {
+    "node": ">=20"
+  },
   "keywords": [
     "design-system",
     "design-tokens",
@@ -37,15 +40,16 @@
   },
   "homepage": "https://www.maddoxengine.com",
   "scripts": {
+    "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "scan": "tsx src/cli.ts",
     "lint": "tsc --noEmit",
-    "test": "tsx --test test/*.test.ts"
+    "test": "tsx --test test/*.test.ts",
+    "prepublishOnly": "npm run lint && npm test && npm run build"
   },
-  "dependencies": {
-    "tsx": "^4.19.0"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "tsx": "^4.19.0",
     "typescript": "^5.9.0"
   },
   "author": "Grafikui Ltd <support@maddoxengine.com>"

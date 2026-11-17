@@ -1,4 +1,4 @@
-#!/usr/bin/env -S npx tsx
+#!/usr/bin/env node
 
 import { readFileSync } from "node:fs";
 import {
@@ -222,7 +222,8 @@ async function main() {
     }
   }
 
-  const git: GitContext = url ? {} : detectGitContext(targetDir);
+  // Git details are only needed for an upload, so skip the git calls without a key.
+  const git: GitContext = url || !apiKey ? {} : detectGitContext(targetDir);
 
   // Upload first so the markdown report can link to the run only if it exists.
   const uploaded = apiKey
