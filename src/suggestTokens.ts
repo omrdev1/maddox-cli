@@ -56,6 +56,14 @@ export function nameForColor(value: string): string {
 }
 
 // One key per actual colour, however it's written (spacing, case, hex or rgb).
+// Hue-and-step names (--color-red-600) are Tailwind's built-in palette names;
+// adding one to a Tailwind theme would redefine every existing use of that
+// class. Putting the colour's main role in front avoids that and says what
+// the colour is for: --color-bg-red-600, --color-text-teal-400, --color-ui-…
+const HUE_STEP_RE = /^--color-([a-z]+-\d+)$/;
+const withRole = (name: string, role: string) => name.replace(HUE_STEP_RE, `--color-${role}-$1`);
+const mostCommon = (roles: Map<string, number>) => [...roles.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "ui";
+
 const normalize = (value: string) => {
   const rgb = parseColor(value);
   return rgb ? `${rgb.join(",")},${Math.round(parseAlpha(value) * 100)}` : value.trim().toLowerCase();
@@ -75,19 +83,21 @@ function isCandidate(f: Finding): boolean {
  * first, each with a proposed token name that doesn't clash with existing ones.
  */
 export function suggestTokens(findings: Finding[], existing: TokenMap, { minUses = 5 }: { minUses?: number } = {}): TokenSuggestions {
-  const counts = new Map<string, { value: string; uses: number }>();
+  const counts = new Map<string, { value: string; uses: number; roles: Map<string, number> }>();
   for (const f of findings) {
     if (!isCandidate(f)) continue;
     const key = normalize(f.rawValue);
-    const entry = counts.get(key) ?? { value: f.rawValue, uses: 0 };
+    const entry = counts.get(key) ?? { value: f.rawValue, uses: 0, roles: new Map() };
     entry.uses++;
+    const role = f.role ?? "ui";
+    entry.roles.set(role, (entry.roles.get(role) ?? 0) + 1);
     counts.set(key, entry);
   }
 
   const taken = new Set(Object.keys(existing));
   const tokens: SuggestedToken[] = [];
-  for (const { value, uses } of [...counts.values()].filter((c) => c.uses >= minUses).sort((a, b) => b.uses - a.uses)) {
-    const base = nameForColor(value);
+  for (const { value, uses, roles } of [...counts.values()].filter((c) => c.uses >= minUses).sort((a, b) => b.uses - a.uses)) {
+    const base = withRole(nameForColor(value), mostCommon(roles));
     let name = base;
     for (let n = 2; taken.has(name); n++) name = `${base}-${n}`;
     taken.add(name);

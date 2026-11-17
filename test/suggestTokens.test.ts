@@ -22,7 +22,7 @@ test("suggests colours used often that match no token, most used first, with a p
   const css = [repeat(6, ".a% { color: #0b3b33; }"), repeat(3, ".b% { color: #c62828; }"), repeat(2, ".c% { color: #141413; }")].join("\n");
   const findings = scan(css, { "--color-ink": "#141413" });
   const s = suggestTokens(findings, { "--color-ink": "#141413" }, { minUses: 3 });
-  assert.deepEqual(s.tokens.map((t) => [t.name, t.value, t.uses]), [["--color-teal-900", "#0b3b33", 6], ["--color-red-600", "#c62828", 3]]);
+  assert.deepEqual(s.tokens.map((t) => [t.name, t.value, t.uses]), [["--color-text-teal-900", "#0b3b33", 6], ["--color-text-red-600", "#c62828", 3]]);
   assert.ok(s.projectedScore > s.currentScore);
   assert.equal(s.projectedScore, 100);
 });
@@ -45,19 +45,26 @@ test("leaves out near-misses that have a safe fix, since fixing them is the bett
 });
 
 test("never reuses an existing token name, and writes a ready-to-paste @theme block", () => {
-  const findings = scan(repeat(5, ".a% { color: #0b3b33; }"), { "--color-teal-900": "#134e4a" });
-  const s = suggestTokens(findings, { "--color-teal-900": "#134e4a" }, { minUses: 5 });
-  assert.equal(s.tokens[0].name, "--color-teal-900-2");
-  assert.equal(themeSnippet(s.tokens), "@theme {\n  --color-teal-900-2: #0b3b33; /* 5 uses */\n}");
+  const findings = scan(repeat(5, ".a% { color: #0b3b33; }"), { "--color-text-teal-900": "#134e4a" });
+  const s = suggestTokens(findings, { "--color-text-teal-900": "#134e4a" }, { minUses: 5 });
+  assert.equal(s.tokens[0].name, "--color-text-teal-900-2");
+  assert.equal(themeSnippet(s.tokens), "@theme {\n  --color-text-teal-900-2: #0b3b33; /* 5 uses */\n}");
 });
 
 test("the same colour written different ways is one suggestion", () => {
   const css = [repeat(3, ".a% { color: rgba(0,0,0,0.5); }"), repeat(3, ".b% { color: rgba(0, 0, 0, 0.5); }"), repeat(2, ".c% { color: #0B3B33; }"), repeat(2, ".d% { color: #0b3b33; }")].join("\n");
   const s = suggestTokens(scan(css, { "--color-ink": "#141413" }), { "--color-ink": "#141413" }, { minUses: 4 });
-  assert.deepEqual(s.tokens.map((t) => [t.name, t.uses]), [["--color-black-a50", 6], ["--color-teal-900", 4]]);
+  assert.deepEqual(s.tokens.map((t) => [t.name, t.uses]), [["--color-black-a50", 6], ["--color-text-teal-900", 4]]);
 });
 
 test("very dark shades get distinct steps instead of a numbered duplicate", () => {
   assert.equal(nameForColor("#1a1a18"), "--color-gray-950");
   assert.equal(nameForColor("#111110"), "--color-gray-975");
+});
+
+test("hue-and-step names carry the colour's role, so they never redefine Tailwind's built-in palette", () => {
+  const css = [repeat(5, ".a% { background: #c62828; }"), repeat(5, ".b% { border-color: #0b3b33; }"), repeat(5, ".c% { box-shadow: 0 0 2px #5fe3b0; }")].join("\n");
+  const names = suggestTokens(scan(css, { "--color-ink": "#141413" }), { "--color-ink": "#141413" }, { minUses: 5 }).tokens.map((t) => t.name).sort();
+  assert.deepEqual(names, ["--color-bg-red-600", "--color-border-teal-900", "--color-ui-teal-400"]);
+  for (const n of names) assert.doesNotMatch(n, /^--color-(red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d+$/);
 });
