@@ -28,7 +28,7 @@ Options:
 - `--url <page-url>` — scan a deployed page instead of local source (see below); pass a placeholder like `-` for `<target-source-dir>` when using this alone
 - `--apply-fixes` — write near-miss color/font-size/spacing suggestions back into source files (see below); not available with `--url`
 - `--format text|json|markdown` — output format (default: `text`)
-- `--fail-below <0-100>` — exit non-zero if the drift health score falls below this threshold; omit to never fail
+- `--fail-below <0-100>` — exit non-zero if the drift health score falls below this threshold; omit to never fail (unless your workspace has [central rules](#central-rules-scale))
 - `--api-key <key>` — upload the result to Maddox Cloud (see below); the `MADDOX_API_KEY` environment variable does the same and is the safer choice, because a flag value can end up in shell history
 
 - `--exclude <glob>` — skip matching files or directories (repeatable); a `.maddoxignore` file in the target directory (one glob per line) is applied too. Test, spec, story and mock files are skipped by default.
@@ -73,7 +73,19 @@ export MADDOX_API_KEY=<your-key>
 npx maddox-engine ./src ./src/app/globals.css
 ```
 
-Uploading never changes the scan result or its exit code. If your monthly limit is reached or the upload fails, the CLI prints a message and carries on, so `--fail-below` still decides whether the build passes. Without a key, nothing is sent over the network. The free plan includes 1 project, 5 uploaded scans a month and 30 days of history; Team includes 5 projects and 12 months, Scale is unlimited. See [pricing](https://www.maddoxengine.com/pricing). If an upload is over a plan limit, the CLI prints the reason and carries on. `MADDOX_API_URL` overrides the endpoint.
+An upload problem never changes the scan result or its exit code. If your monthly limit is reached or the upload fails, the CLI prints a message and carries on, so `--fail-below` still decides whether the build passes. Without a key, nothing is sent over the network. The free plan includes 1 project, 5 uploaded scans a month and 30 days of history; Team includes 5 projects and 12 months, Scale is unlimited. See [pricing](https://www.maddoxengine.com/pricing). If an upload is over a plan limit, the CLI prints the reason and carries on. `MADDOX_API_URL` overrides the endpoint.
+
+#### Central rules (Scale)
+
+On Scale, the workspace owner sets CI rules once in the dashboard, and every scan run with the workspace's API key applies them:
+
+- **Minimum health score:** fails the build below it, as `--fail-below` does. A `--fail-below` flag passed on the command line takes precedence.
+- **Fail on new drift:** fails a pull request that adds drift compared with your main branch. Pushes to main are never failed by this rule, and it is skipped (with a message) when there is no earlier main-branch scan to compare with.
+- **Approved exceptions:** values such as an intentional campaign colour are left out of the report, the score, `--apply-fixes` and the upload.
+
+If the rules can't be loaded, the scan carries on with your local flags and says so.
+
+Exit codes: `0` passed, `1` drift failed `--fail-below` or a central rule, `2` the scan could not run (bad arguments, no usable tokens, an error).
 
 ### Example
 
@@ -230,7 +242,7 @@ Inputs:
 - `figma-file` / `figma-token` / `figma-token-type` — pull tokens from a Figma file's Variables; requires an Enterprise Figma plan. `figma-token` should be a secret (`${{ secrets.FIGMA_TOKEN }}`), never a literal value.
 - `url` — a deployed page URL to scan instead of local source
 - `github-token` *(required)* — for posting the PR comment, usually `${{ secrets.GITHUB_TOKEN }}`
-- `fail-below` — fail the build below this health score; omit for comment-only
+- `fail-below` — fail the build below this health score; omit for comment-only (unless your workspace has [central rules](#central-rules-scale)).. If the scan can't run (for example, a wrong `theme-css` path), the check fails only when `fail-below` or `api-key` is set
 - `api-key` / `api-url` — optional, upload results to a [Maddox Engine](https://www.maddoxengine.com) dashboard account for scan history and drift trends across projects (a separate hosted product, not required to use the Action itself). When an upload succeeds, the PR comment links to the run on the dashboard. The PR comment is updated in place on every push, never duplicated.
 
 Pin `@main` to a specific commit SHA if you want reproducible CI runs immune to changes on this branch.

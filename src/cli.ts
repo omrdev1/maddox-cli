@@ -14,6 +14,31 @@ import {
 } from "./core.js";
 import { comparisonText, dashboardRunUrl, summarize, toJson, toMarkdown, toText, type ScanComparison, type ScanSummary } from "./format.js";
 import { detectGitContext, type GitContext } from "./gitContext.js";
+import { applyExceptions, EMPTY_CENTRAL_RULES, newDriftVerdict, parseCentralRules, type CentralRules } from "./centralRules.js";
+
+// Exit codes: 1 = drift failed a rule (--fail-below or central rules),
+// 2 = the scan itself could not run (bad arguments, no tokens, a crash).
+// The Action uses the difference so comment-only setups stay comment-only.
+const SCAN_ERROR = 2;
+
+// Central rules never block a scan: if they can't be fetched, the scan runs
+// with local flags only and says so.
+async function fetchCentralRules(apiUrl: string, apiKey: string): Promise<CentralRules> {
+  try {
+    const response = await fetch(`${apiUrl}/api/rules`, {
+      headers: { "X-Maddox-Api-Key": apiKey },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      console.error(`\n⚠️ Could not load central rules (${response.status}); continuing with local flags only.`);
+      return EMPTY_CENTRAL_RULES;
+    }
+    return parseCentralRules(await response.json().catch(() => null));
+  } catch {
+    console.error("\n⚠️ Could not reach Maddox Cloud for central rules; continuing with local flags only.");
+    return EMPTY_CENTRAL_RULES;
+  }
+}
 
 async function uploadResult(
   apiUrl: string,
@@ -23,20 +48,27 @@ async function uploadResult(
   source: "cli" | "github_action",
   git: GitContext
 ): Promise<{ runUrl: string; comparison: ScanComparison | null } | undefined> {
-  const response = await fetch(`${apiUrl}/api/scans`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Maddox-Api-Key": apiKey,
-    },
-    body: JSON.stringify({
-      projectName,
-      source,
-      filesScanned: summary.filesScanned,
-      findings: summary.findings,
-      ...(git.branch ? { git } : {}),
-    }),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${apiUrl}/api/scans`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Maddox-Api-Key": apiKey,
+      },
+      body: JSON.stringify({
+        projectName,
+        source,
+        filesScanned: summary.filesScanned,
+        findings: summary.findings,
+        ...(git.branch ? { git } : {}),
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+  } catch {
+    console.error("\nCould not reach Maddox Cloud to upload. Local results above are unaffected.");
+    return undefined;
+  }
 
   // Cloud problems never fail a scan: local results are already printed and
   // --fail-below still decides the exit code.
@@ -98,7 +130,7 @@ async function main() {
         "A <target-source-dir>/.maddoxignore file (one glob per line) is always applied too. " +
         "Test, spec and story files are skipped by default."
     );
-    process.exit(1);
+    process.exit(SCAN_ERROR);
   }
 
   const projectName = flagValue("--project") ?? (url ? new URL(url).hostname : targetDir.split("/").pop()) ?? "unnamed-project";
@@ -128,7 +160,7 @@ async function main() {
         "\n--figma-file requires MADDOX_FIGMA_TOKEN (a personal access token) or " +
           "MADDOX_FIGMA_OAUTH_TOKEN (an OAuth2 access token) to be set."
       );
-      process.exit(1);
+      process.exit(SCAN_ERROR);
     }
     try {
       groundTruth = await loadGroundTruthWithFigma(themeCssPath, motionTokens, tokensStudioPath, {
@@ -139,7 +171,7 @@ async function main() {
     } catch (err) {
       if (err instanceof FigmaVariablesUnavailableError) {
         console.error(`\n${err.message}`);
-        process.exit(1);
+        process.exit(SCAN_ERROR);
       }
       throw err;
     }
@@ -153,20 +185,30 @@ async function main() {
         "Maddox reads color and size values from @theme blocks and resolves var() references from :root. " +
         "Point it at the CSS file that defines your theme, or add --tokens-studio or --figma-file."
     );
-    process.exit(1);
+    process.exit(SCAN_ERROR);
   }
 
-  const result = url
-    ? await auditUrl(url, groundTruth)
-    : await audit(targetDir, groundTruth, stateContract, flagValues("--exclude"));
-  const summary = summarize(result.findings, result.filesScanned);
+  const apiKey = flagValue("--api-key") ?? process.env.MADDOX_API_KEY;
+  const apiUrl = process.env.MADDOX_API_URL ?? "https://www.maddoxengine.com";
+
+  const [result, centralRules] = await Promise.all([
+    url ? auditUrl(url, groundTruth) : audit(targetDir, groundTruth, stateContract, flagValues("--exclude")),
+    apiKey ? fetchCentralRules(apiUrl, apiKey) : Promise.resolve(EMPTY_CENTRAL_RULES),
+  ]);
+  // Approved exceptions are dropped before anything else, so they are never
+  // reported, auto-fixed, scored or uploaded.
+  const { findings, exceptedCount } = applyExceptions(result.findings, centralRules.exceptions);
+  if (exceptedCount > 0) {
+    console.error(`\n${exceptedCount} finding${exceptedCount === 1 ? "" : "s"} skipped as approved exceptions (central rules).`);
+  }
+  const summary = summarize(findings, result.filesScanned);
 
   const applyFixesFlag = process.argv.includes("--apply-fixes");
   if (applyFixesFlag) {
     if (url) {
       console.error("\n--apply-fixes has no effect with --url: there is no local source to write to.");
     } else {
-      const { applied, skipped } = applyFixes(targetDir, result.findings);
+      const { applied, skipped } = applyFixes(targetDir, findings);
       if (applied.length > 0) {
         console.error(`\nApplied ${applied.length} fix${applied.length === 1 ? "" : "es"}:`);
         for (const fix of applied) {
@@ -180,8 +222,7 @@ async function main() {
     }
   }
 
-  const apiKey = flagValue("--api-key") ?? process.env.MADDOX_API_KEY;
-  const apiUrl = process.env.MADDOX_API_URL ?? "https://www.maddoxengine.com";
+  const git: GitContext = url ? {} : detectGitContext(targetDir);
 
   // Upload first so the markdown report can link to the run only if it exists.
   const uploaded = apiKey
@@ -191,7 +232,7 @@ async function main() {
         projectName,
         summary,
         process.env.GITHUB_ACTIONS ? "github_action" : "cli",
-        url ? {} : detectGitContext(targetDir)
+        git
       )
     : undefined;
 
@@ -207,25 +248,35 @@ async function main() {
     console.log("\n💡 Tip: connect to Maddox Cloud for scan history, and see what each pull request adds or fixes compared with main: npx maddox-engine --api-key <key>");
   }
 
+  // --fail-below on the command line wins over the workspace's central rule.
   const failBelowRaw = flagValue("--fail-below");
+  let threshold = centralRules.failBelow;
+  let thresholdLabel = "central rule";
   if (failBelowRaw !== undefined) {
-    const threshold = Number(failBelowRaw);
+    threshold = Number(failBelowRaw);
+    thresholdLabel = "threshold";
     if (Number.isNaN(threshold)) {
       console.error(`\n--fail-below expects a number, got "${failBelowRaw}"`);
-      process.exit(1);
-    }
-
-    const score = healthScore(summary.counts);
-    console.error(`\nHealth score: ${score} (threshold: ${threshold})`);
-
-    if (score < threshold) {
-      console.error(`Maddox: drift below threshold — failing build (${score} < ${threshold}).`);
-      process.exit(1);
+      process.exit(SCAN_ERROR);
     }
   }
+
+  let failed = false;
+  if (threshold !== null) {
+    const score = healthScore(summary.counts);
+    console.error(`\nHealth score: ${score} (${thresholdLabel}: ${threshold})`);
+    if (score < threshold) {
+      console.error(`Maddox: drift below ${thresholdLabel} — failing build (${score} < ${threshold}).`);
+      failed = true;
+    }
+  }
+
+  const newDrift = newDriftVerdict(centralRules, git, uploaded?.comparison);
+  if (newDrift.message) console.error(`\n${newDrift.message}`);
+  if (failed || newDrift.fail) process.exit(1);
 }
 
 main().catch((err) => {
   console.error(err);
-  process.exit(1);
+  process.exit(SCAN_ERROR);
 });

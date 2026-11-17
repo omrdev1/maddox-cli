@@ -13,6 +13,7 @@ export * from "./healthScore.js";
 export * from "./suggestFix.js";
 export * from "./applyFixes.js";
 export * from "./routeMap.js";
+export * from "./centralRules.js";
 
 import { scanSource, scanFiles } from "./scan.js";
 import { crawlUrl } from "./crawl.js";

@@ -43,7 +43,7 @@ inputs:
     required: false
     default: "https://www.maddoxengine.com"
   fail-below:
-    description: "Fail the build if the drift health score (0-100) falls below this threshold. Omit to never fail the build (comment-only)."
+    description: "Fail the build if the drift health score (0-100) falls below this threshold. Overrides the workspace's central rule when set. Omit for comment-only, unless your workspace has central rules (Scale)."
     required: false
 runs:
   using: "composite"
@@ -150,11 +150,16 @@ runs:
             await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
           }
 
-    - name: Enforce drift threshold
-      if: inputs.fail-below != ''
+    # Exit 1: drift failed --fail-below or the workspace's central rules.
+    # Exit 2: the scan could not run; fails only when the workflow opted in
+    # to enforcement (fail-below or an API key), so comment-only stays green.
+    - name: Enforce drift rules
+      if: steps.run-scan.outputs.exit_code == '1' || (steps.run-scan.outputs.exit_code != '0' && (inputs.fail-below != '' || inputs.api-key != ''))
       shell: bash
       run: |
-        if [ "${{ steps.run-scan.outputs.exit_code }}" != "0" ]; then
-          echo "::error::Maddox: drift health score fell below --fail-below ${{ inputs.fail-below }}. See the scan output above or the PR comment for details."
-          exit 1
+        if [ "${{ steps.run-scan.outputs.exit_code }}" = "1" ]; then
+          echo "::error::Maddox: drift failed this check (health score threshold or new drift). See the scan output above or the PR comment."
+        else
+          echo "::error::Maddox: the scan could not run. See the scan output above."
         fi
+        exit 1
