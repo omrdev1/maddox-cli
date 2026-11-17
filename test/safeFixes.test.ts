@@ -84,3 +84,10 @@ test("fixes in email templates are held, since email clients don't support CSS v
   assert.equal(after, email);
   assert.ok(result.held.some((h) => h.reason === "email"));
 });
+
+test("a tint of a token colour counts as that token, with no automatic fix (it would lose its transparency)", () => {
+  const [f] = findingsFor("a.css", ".a { background: rgba(255, 255, 255, 0.06); }", { "--color-white": "#ffffff" });
+  assert.equal(f.severity, "match");
+  assert.equal(f.nearestToken, "--color-white");
+  assert.equal(f.suggestion, undefined);
+});
