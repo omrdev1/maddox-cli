@@ -37,6 +37,25 @@ function walkDir(dir: string, rootDir: string, ignore: IgnoreMatcher, out: strin
 }
 
 /**
+ * Whether a full scan of `rootDir` would include `relativePath`: same
+ * extensions, skipped folders, default ignores, `.maddoxignore` and extra
+ * patterns, applied to every parent folder as the walk does. Used by
+ * single-file checks so they never report on a file a scan would skip.
+ */
+export function isScannable(rootDir: string, relativePath: string, extraIgnorePatterns: string[] = []): boolean {
+  const segments = relativePath.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (segments.length === 0 || segments.includes("..")) return false;
+  const name = segments[segments.length - 1];
+  if (!SCAN_EXTENSIONS.has(name.slice(name.lastIndexOf(".")))) return false;
+  const ignore = createIgnoreMatcher([...DEFAULT_IGNORE_PATTERNS, ...loadIgnoreFile(rootDir), ...extraIgnorePatterns]);
+  for (let i = 1; i <= segments.length; i++) {
+    if (i < segments.length && SKIP_DIRS.has(segments[i - 1])) return false;
+    if (ignore.isIgnored(segments.slice(0, i).join("/"))) return false;
+  }
+  return true;
+}
+
+/**
  * Walks .ts/.tsx/.js/.jsx/.css files under `rootDir` (skipping node_modules/.next,
  * test and story files, and anything matched by `.maddoxignore` or `extraIgnorePatterns`) and
  * returns each file's relative path and content. Shared by the

@@ -14,6 +14,8 @@ import {
 } from "./core.js";
 import { comparisonText, dashboardRunUrl, summarize, toJson, toMarkdown, toText, type ScanComparison, type ScanSummary } from "./format.js";
 import { detectGitContext, type GitContext } from "./gitContext.js";
+import { checkText, runCheck } from "./check.js";
+import { ConfigError, findConfig, loadConfig, type MaddoxConfig } from "./config.js";
 import { applyExceptions, EMPTY_CENTRAL_RULES, newDriftVerdict, parseCentralRules, type CentralRules } from "./centralRules.js";
 
 // Exit codes: 1 = drift failed a rule (--fail-below or central rules),
@@ -103,14 +105,56 @@ function flagValues(name: string): string[] {
   return out;
 }
 
+async function readStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+// `maddox check <file> [--stdin] [--format text|json]`: one file against the
+// project's tokens, found through maddox.config.json. Local only, no API key.
+// Exit 0: no drift (or file skipped). 1: drift found. 2: could not check.
+async function checkCommand(args: string[]) {
+  const file = args.find((a) => !a.startsWith("--"));
+  const format = args.includes("--format") ? args[args.indexOf("--format") + 1] : "text";
+  if (!file) {
+    console.error("Usage: maddox check <file> [--stdin] [--format text|json]");
+    process.exit(SCAN_ERROR);
+  }
+  const content = args.includes("--stdin") ? await readStdin() : undefined;
+  const result = runCheck({ file, content, cwd: process.cwd() });
+  if (format === "json") console.log(JSON.stringify(result, null, 2));
+  else (result.status === "error" ? console.error : console.log)(checkText(result));
+  process.exit(result.status === "error" ? SCAN_ERROR : result.status === "checked" && result.findings.length > 0 ? 1 : 0);
+}
+
 async function main() {
-  const targetDir = process.argv[2];
-  const themeCssPath = process.argv[3];
+  // Subcommands come first. A folder that shares a subcommand's name can be
+  // scanned as ./check.
+  if (process.argv[2] === "check") return checkCommand(process.argv.slice(3));
+
+  // With no paths given, read them from maddox.config.json. Flags still win.
+  let config: MaddoxConfig | undefined;
+  const hasPositional = process.argv[2] !== undefined && !process.argv[2].startsWith("--");
+  if (!hasPositional) {
+    const configPath = findConfig(process.cwd());
+    if (configPath) {
+      try {
+        config = loadConfig(configPath);
+      } catch (err) {
+        if (!(err instanceof ConfigError)) throw err;
+        console.error(`\n${err.message}`);
+        process.exit(SCAN_ERROR);
+      }
+    }
+  }
+  const targetDir = config ? config.source : process.argv[2];
+  const themeCssPath = config ? config.theme : process.argv[3];
   const url = flagValue("--url");
 
   if (!themeCssPath || (!targetDir && !url)) {
     console.error(
-      "Usage: pnpm scan <target-source-dir> <path-to-globals.css-with-@theme-block> " +
+      "Usage: maddox <target-source-dir> <path-to-globals.css-with-@theme-block> " +
         "[--project <name>] [--motion <path-to-motion-tokens.json>] " +
         "[--states <path-to-state-contract.json>] [--format text|json|markdown] " +
         "[--fail-below <0-100>] [--tokens-studio <path-to-tokens-studio-export.json>] " +
@@ -128,27 +172,31 @@ async function main() {
         "  --exclude <glob> skips matching files/directories (repeatable). A pattern " +
         "with no '/' matches at any depth, e.g. --exclude 'api/**' --exclude '*.generated.ts'. " +
         "A <target-source-dir>/.maddoxignore file (one glob per line) is always applied too. " +
-        "Test, spec and story files are skipped by default."
+        "Test, spec and story files are skipped by default.\n" +
+        "  With a maddox.config.json in the project ({\"theme\": \"app/globals.css\", \"source\": \"app\"}), run " +
+        "`maddox` with no paths; flags still override it.\n" +
+        "  maddox check <file> [--stdin] [--format text|json] checks one file (or proposed content on stdin) " +
+        "against the config's tokens. Local only: no upload, no API key."
     );
     process.exit(SCAN_ERROR);
   }
 
-  const projectName = flagValue("--project") ?? (url ? new URL(url).hostname : targetDir.split("/").pop()) ?? "unnamed-project";
+  const projectName = flagValue("--project") ?? config?.project ?? (url ? new URL(url).hostname : targetDir.split("/").pop()) ?? "unnamed-project";
   const format = flagValue("--format") ?? "text";
 
   // Motion tokens are an optional external JSON file (a plain object like
   // @grafikui/motion's motionTokens export) — the CLI has no opinion on any
   // one target's motion system, so this stays a vendored/passed-in file
   // per project rather than a hardcoded import.
-  const motionPath = flagValue("--motion");
+  const motionPath = flagValue("--motion") ?? config?.motion;
   const motionTokens = motionPath
     ? (JSON.parse(readFileSync(motionPath, "utf-8")) as Record<string, unknown>)
     : {};
 
-  const statesPath = flagValue("--states");
+  const statesPath = flagValue("--states") ?? config?.states;
   const stateContract = statesPath ? loadStateContract(statesPath) : undefined;
 
-  const tokensStudioPath = flagValue("--tokens-studio");
+  const tokensStudioPath = flagValue("--tokens-studio") ?? config?.tokensStudio;
 
   const figmaFileKey = flagValue("--figma-file");
   let groundTruth;
@@ -192,7 +240,7 @@ async function main() {
   const apiUrl = process.env.MADDOX_API_URL ?? "https://www.maddoxengine.com";
 
   const [result, centralRules] = await Promise.all([
-    url ? auditUrl(url, groundTruth) : audit(targetDir, groundTruth, stateContract, flagValues("--exclude")),
+    url ? auditUrl(url, groundTruth) : audit(targetDir, groundTruth, stateContract, [...(config?.exclude ?? []), ...flagValues("--exclude")]),
     apiKey ? fetchCentralRules(apiUrl, apiKey) : Promise.resolve(EMPTY_CENTRAL_RULES),
   ]);
   // Approved exceptions are dropped before anything else, so they are never

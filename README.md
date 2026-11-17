@@ -33,6 +33,35 @@ Options:
 
 - `--exclude <glob>` — skip matching files or directories (repeatable); a `.maddoxignore` file in the target directory (one glob per line) is applied too. Test, spec, story and mock files are skipped by default.
 
+### Project config
+
+Put a `maddox.config.json` at your project root and run `npx maddox-engine` with no paths. Command-line flags still override it.
+
+```json
+{
+  "theme": "app/globals.css",
+  "source": "app",
+  "motion": "motion-tokens.json",
+  "states": "state-contract.json",
+  "tokensStudio": "tokens.json",
+  "exclude": ["legacy/**"],
+  "project": "web"
+}
+```
+
+Only `theme` is required. `source` defaults to the folder holding the config, and `project` to that folder's name. Paths are relative to the config file and must stay inside the project. Maddox looks for the config in the current folder and its parents, stopping at the repository root.
+
+### Checking one file
+
+```bash
+npx maddox-engine check app/components/Card.tsx
+cat proposed.css | npx maddox-engine check app/styles/card.css --stdin --format json
+```
+
+Checks one file, or proposed content passed on stdin, against the tokens in `maddox.config.json`, with the same rules as a full scan (test, story and ignored files are skipped). It prints only drift, with the nearest token and suggested fix. Local only: it never uploads and never reads your API key. Exit codes: `0` no drift or the file is skipped, `1` drift found, `2` the check could not run.
+
+Requires Node 20 or later.
+
 ### What counts as a finding
 
 Maddox reads your tokens from every `@theme` block (including `@theme inline`) and resolves `var()` references from `:root`, so the shadcn pattern (`--color-background: var(--background)`) works. Token values can be hex, `rgb()`, `hsl()`, bare HSL triplets (`222.2 47.4% 11.2%`, common in Tailwind v3 / shadcn `:root` blocks), or `oklch()`. Dark-mode overrides are not read. If no usable tokens are found it exits with an error instead of scoring everything as drift.

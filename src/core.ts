@@ -15,12 +15,13 @@ export * from "./applyFixes.js";
 export * from "./routeMap.js";
 export * from "./centralRules.js";
 
-import { scanSource, scanFiles } from "./scan.js";
+import { scanSource, scanFiles, isScannable } from "./scan.js";
+import { extractFromContent } from "./extract.js";
 import { crawlUrl } from "./crawl.js";
 import { diffUsages } from "./diff.js";
 import { checkStates } from "./stateCheck.js";
 import { attachSuggestions } from "./suggestFix.js";
-import type { GroundTruth, ScanResult, StateContract } from "./types.js";
+import type { Finding, GroundTruth, ScanResult, StateContract } from "./types.js";
 
 export async function audit(
   rootDir: string,
@@ -56,4 +57,24 @@ export async function auditUrl(pageUrl: string, groundTruth: GroundTruth): Promi
   const findings = diffUsages(usages, groundTruth);
   attachSuggestions(findings);
   return { findings, filesScanned: sourcesScanned.length };
+}
+
+/**
+ * Checks one file's text (on disk or proposed) exactly as audit() would check
+ * that file within `rootDir`. Returns null when a scan would skip the file
+ * (unsupported extension, test or story file, ignored path).
+ */
+export function checkContent(
+  rootDir: string,
+  relativePath: string,
+  content: string,
+  groundTruth: GroundTruth,
+  options: { stateContract?: StateContract; ignorePatterns?: string[] } = {}
+): Finding[] | null {
+  if (!isScannable(rootDir, relativePath, options.ignorePatterns)) return null;
+  const file = relativePath.replace(/\\/g, "/");
+  const findings = diffUsages(extractFromContent(file, content), groundTruth);
+  if (options.stateContract) findings.push(...checkStates([{ file, content }], options.stateContract));
+  attachSuggestions(findings);
+  return findings;
 }

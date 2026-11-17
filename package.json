@@ -1,7 +1,7 @@
 {
   "name": "maddox-engine",
-  "version": "0.9.0",
-  "description": "Scans source code or a live deployed page for design-token, motion, and component-state drift against your own design system \u2014 the same engine behind Maddox Engine's CI checks.",
+  "version": "0.10.0",
+  "description": "Scans source code or a live deployed page for design-token, motion, and component-state drift against your own design system — the same engine behind Maddox Engine's CI checks.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/core.js",
