@@ -171,6 +171,14 @@ Third-party stylesheets (a different origin than the page itself, e.g. a font CD
 
 Every `near-miss` finding with a resolved nearest token gets a `suggestion` — the concrete replacement text (`var(--token-name)` for a CSS value, or `motionTokens.path.to.value` for a motion token). By default it's advisory text for you to apply yourself; pass `--apply-fixes` to write it back into the file. An `unrecognized` value with no close match, and a `missing`-state finding, never get a suggestion — there's no safe mechanical fix for either.
 
+### Suggested new tokens
+
+```bash
+npx maddox-engine ./src ./src/app/globals.css --suggest-tokens
+```
+
+Lists colours your code uses again and again that your theme doesn't name (5 or more uses by default; change it with `--min-uses 3`), most used first, as a ready-to-paste `@theme` block with the score you'd get by adding them. That covers values with no close token, translucent overlays, and deliberate shades a fix can't safely replace, such as two stops of a gradient. Each gets a readable name from its hue and lightness (`#0b3b33` → `--color-teal-900`, `rgba(255,255,255,0.06)` → `--color-white-a6`); names never clash with your existing tokens, and they're a starting point to rename. Maddox never edits your theme: adding a token is a design decision. With `--format json`, the suggestions are under `suggestedTokens`.
+
 ### Applying fixes automatically
 
 ```bash

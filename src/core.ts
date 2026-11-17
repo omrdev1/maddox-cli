@@ -14,6 +14,8 @@ export * from "./suggestFix.js";
 export * from "./applyFixes.js";
 export * from "./routeMap.js";
 export * from "./centralRules.js";
+export * from "./suggestTokens.js";
+export * from "./tokenRoles.js";
 
 import { scanSource, scanFiles, isScannable } from "./scan.js";
 import { extractFromContent } from "./extract.js";

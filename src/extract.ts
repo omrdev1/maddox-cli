@@ -24,6 +24,7 @@ export interface RawUsage {
   literal?: string;
   fixStyle?: FixStyle;
   role?: ColorRole;
+  inGradient?: boolean;
   // Only set for spring params (mass/stiffness/damping) — these share no
   // common numeric range (stiffness commonly ~50-500, mass ~0.5-5, damping
   // ~5-50), so pure numeric-proximity matching across all motion tokens
@@ -123,6 +124,19 @@ function isZero(value: string): boolean {
 // `text-[#111]`, `borderColor: "#111"`. Shadows and others give no role.
 const ROLE_KEYWORD_RE = /(background(?:-color|Color)?|\bbg-|\bfill\b|border(?:-(?:top|right|bottom|left))?(?:-color|Color)?|\bstroke\b|outline(?:-color|Color)?|\bcolor\b|\btext-)/gi;
 
+/** True when the position sits inside an unclosed `*-gradient(` on its line. */
+export function insideGradient(content: string, index: number): boolean {
+  const prefix = content.slice(content.lastIndexOf("\n", index - 1) + 1, index);
+  const start = prefix.search(/(?:linear|radial|conic)-gradient\((?![^]*(?:linear|radial|conic)-gradient\()/);
+  if (start === -1) return false;
+  let depth = 0;
+  for (const ch of prefix.slice(start)) {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+  }
+  return depth > 0;
+}
+
 export function colorRoleAt(content: string, index: number): ColorRole | undefined {
   const prefix = content.slice(content.lastIndexOf("\n", index - 1) + 1, index);
   let last: string | undefined;
@@ -142,7 +156,11 @@ function collectColors(file: string, content: string, usages: RawUsage[]): void 
       if (isAttributeSelectorValue(content, m.index, m[0].length)) continue;
       const rawValue = m[0].startsWith("#") ? m[0].toLowerCase() : m[0];
       const role = colorRoleAt(content, m.index);
-      usages.push({ ...usageAt(file, content, m.index, "color", m[0], rawValue), ...(role ? { role } : {}) });
+      usages.push({
+        ...usageAt(file, content, m.index, "color", m[0], rawValue),
+        ...(role ? { role } : {}),
+        ...(insideGradient(content, m.index) ? { inGradient: true } : {}),
+      });
     }
   }
 }

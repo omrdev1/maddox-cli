@@ -15,6 +15,7 @@ import {
 import { comparisonText, dashboardRunUrl, summarize, toJson, toMarkdown, toText, type ScanComparison, type ScanSummary } from "./format.js";
 import { detectGitContext, type GitContext } from "./gitContext.js";
 import { checkText, runCheck } from "./check.js";
+import { suggestTokens, themeSnippet } from "./suggestTokens.js";
 import { ConfigError, findConfig, loadConfig, type MaddoxConfig } from "./config.js";
 import { applyExceptions, EMPTY_CENTRAL_RULES, newDriftVerdict, parseCentralRules, type CentralRules } from "./centralRules.js";
 
@@ -320,12 +321,28 @@ async function main() {
       )
     : undefined;
 
+  // --suggest-tokens [--min-uses N]: colours used often that the theme doesn't name.
+  const suggestions = process.argv.includes("--suggest-tokens")
+    ? suggestTokens(findings, groundTruth.tokens, { minUses: Math.max(1, Number(flagValue("--min-uses") ?? 5) || 5) })
+    : undefined;
+
   if (format === "json") {
-    console.log(toJson(summary));
+    console.log(suggestions ? JSON.stringify({ ...JSON.parse(toJson(summary)), suggestedTokens: suggestions }, null, 2) : toJson(summary));
   } else if (format === "markdown") {
     console.log(toMarkdown(summary, { dashboardUrl: uploaded?.runUrl, comparison: uploaded?.comparison }));
   } else {
     console.log(toText(summary));
+  }
+  if (suggestions && format !== "json") {
+    if (suggestions.tokens.length === 0) {
+      console.log("\nNo suggested tokens: no unnamed colour is used often enough.");
+    } else {
+      console.log(
+        `\nSuggested new tokens (colours used often that your theme doesn't name). ` +
+          `Adding all of them would take the score from ${suggestions.currentScore} to ${suggestions.projectedScore}. ` +
+          `Names are a starting point; rename freely.\n\n${themeSnippet(suggestions.tokens)}`
+      );
+    }
   }
 
   if (!apiKey && format === "text") {

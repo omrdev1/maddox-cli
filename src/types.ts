@@ -43,6 +43,8 @@ export interface Finding {
   // What the colour is used for, from the property it sits in. Used to
   // avoid suggesting, say, a text token for a background.
   role?: ColorRole;
+  // True when the colour is a stop inside a CSS gradient.
+  inGradient?: boolean;
   // A suggested source replacement for `rawValue`, only ever set for
   // "near-miss" or "match"-adjacent findings with a resolvable
   // nearestToken — see suggestFix.ts. Left undefined (never an empty
