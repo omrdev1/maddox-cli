@@ -11,8 +11,13 @@ import type { FixStyle } from "./types.js";
 export interface RawUsage {
   file: string;
   line: number;
-  kind: "color" | "spacing" | "font-size" | "motion";
+  kind: "color" | "spacing" | "font-size" | "motion" | "token"; // "token": a var() reference, kind decided at diff time
   rawValue: string;
+  // Set when the usage is a reference to a design token by name
+  // (`var(--color-paper)`): scored as a match of that token's kind if the
+  // name is a real token, ignored otherwise. Its `kind` is "token" until
+  // diffUsages sets the real one from the token's value.
+  tokenRef?: string;
   // 1-based column and exact source text of the value (rawValue may be
   // normalized: lowercased hex, px for a bare JS number, seconds for ms).
   column?: number;
@@ -250,6 +255,28 @@ function collectMotionTimings(file: string, content: string, re: RegExp, usages:
  * fetched-HTML/CSS path — the same extraction either way, source doesn't
  * matter.
  */
+const TOKEN_REF_RE = /var\(\s*(--[\w-]+)/g;
+// A custom property definition (`--surface: var(--paper)`) defines a token;
+// it isn't a usage of one.
+const CUSTOM_PROPERTY_DEFINITION_RE = /--[\w-]+\s*:\s*[^;{}]*$/;
+
+function collectTokenRefs(file: string, content: string, usages: RawUsage[]): void {
+  TOKEN_REF_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = TOKEN_REF_RE.exec(content)) !== null) {
+    const lineStart = content.lastIndexOf("\n", m.index - 1) + 1;
+    if (CUSTOM_PROPERTY_DEFINITION_RE.test(content.slice(lineStart, m.index))) continue;
+    usages.push({
+      file,
+      line: lineNumberAt(content, m.index),
+      column: m.index - lineStart + 1,
+      kind: "token",
+      rawValue: `var(${m[1]})`,
+      tokenRef: m[1],
+    });
+  }
+}
+
 export function extractFromContent(file: string, rawContent: string): RawUsage[] {
   const content = maskNonUsage(rawContent);
   const usages: RawUsage[] = [];
@@ -257,6 +284,7 @@ export function extractFromContent(file: string, rawContent: string): RawUsage[]
   collectColors(file, content, usages);
   collectFontSizes(file, content, usages);
   collectSpacing(file, content, usages);
+  collectTokenRefs(file, content, usages);
 
   let m: RegExpExecArray | null;
   for (const re of [MOTION_DURATION_RE, MOTION_DELAY_RE, MOTION_STAGGER_RE]) {

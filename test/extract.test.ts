@@ -2,7 +2,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { extractFromContent } from "../src/extract.js";
 
-const values = (content: string) => extractFromContent("a.css", content).map((u) => u.rawValue);
+// Literal values only; var() token references are covered in tokenRefs.test.ts.
+const values = (content: string) => extractFromContent("a.css", content).filter((u) => !u.tokenRef).map((u) => u.rawValue);
 
 test("ignores colors written in block and line comments", () => {
   const content = [

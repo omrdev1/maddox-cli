@@ -2,6 +2,10 @@ import { parseColor, type Rgb } from "./color.js";
 import type { RawUsage } from "./extract.js";
 import type { Finding, GroundTruth } from "./types.js";
 
+// A literal value found in source (not a var() reference), with its real kind.
+type LiteralUsage = Omit<RawUsage, "kind" | "tokenRef"> & { kind: Exclude<RawUsage["kind"], "token"> };
+const isLiteral = (usage: RawUsage): usage is RawUsage & LiteralUsage => usage.kind !== "token" && !usage.tokenRef;
+
 const NEAR_MISS_RGB_THRESHOLD = 25;
 const NEAR_MISS_NUMERIC_THRESHOLD = 0.05; // motion durations/delay/stagger, e.g. seconds
 const NEAR_MISS_LENGTH_PX_THRESHOLD = 2; // font sizes and spacing
@@ -15,7 +19,7 @@ function colorDistance(a: Rgb, b: Rgb): number {
   return Math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2);
 }
 
-function diffColor(usage: RawUsage, tokens: GroundTruth["tokens"]): Finding {
+function diffColor(usage: LiteralUsage, tokens: GroundTruth["tokens"]): Finding {
   const usageRgb = parseColor(usage.rawValue);
   if (!usageRgb) {
     return { ...usage, severity: "unrecognized" };
@@ -61,7 +65,7 @@ function isSpringLeaf(path: string, leafHint: string): boolean {
   return path.split(".").pop() === leafHint;
 }
 
-function diffMotion(usage: RawUsage, motion: GroundTruth["motion"]): Finding {
+function diffMotion(usage: LiteralUsage, motion: GroundTruth["motion"]): Finding {
   const usageNum = Number(usage.rawValue);
   const isNumeric = !Number.isNaN(usageNum);
 
@@ -168,7 +172,7 @@ function spacingCandidates(tokens: GroundTruth["tokens"]): TokenEntry[] {
   return Object.entries(tokens).filter(([name, value]) => SPACING_NAME_RE.test(name) && toPx(value) !== null);
 }
 
-function diffLength(usage: RawUsage, candidates: TokenEntry[]): Finding {
+function diffLength(usage: LiteralUsage, candidates: TokenEntry[]): Finding {
   const exactMatch = candidates.find(([, value]) => value === usage.rawValue);
   if (exactMatch) {
     return { ...usage, severity: "match", nearestToken: exactMatch[0] };
@@ -204,21 +208,39 @@ function diffLength(usage: RawUsage, candidates: TokenEntry[]): Finding {
 
 // A usage can only drift from a token that exists: with no color tokens, every
 // color would be "unrecognized", which is noise, not a finding.
-function hasTokensFor(kind: RawUsage["kind"], groundTruth: GroundTruth): boolean {
+function hasTokensFor(kind: LiteralUsage["kind"], groundTruth: GroundTruth): boolean {
   if (kind === "motion") return groundTruth.motion.length > 0;
   if (kind === "color") return Object.values(groundTruth.tokens).some((value) => parseColor(value) !== null);
   if (kind === "spacing") return spacingCandidates(groundTruth.tokens).length > 0;
   return fontSizeCandidates(groundTruth.tokens).length > 0;
 }
 
+// A `var(--name)` usage of a real token is a match, of the kind the token's
+// value says. References to anything that isn't a design token are dropped.
+function diffTokenRef(usage: RawUsage, groundTruth: GroundTruth): Finding | null {
+  const name = usage.tokenRef as string;
+  const value = groundTruth.tokens[name];
+  if (value === undefined) return null;
+  let kind: Finding["kind"] | null = null;
+  if (parseColor(value) !== null) kind = "color";
+  else if (fontSizeCandidates(groundTruth.tokens).some(([n]) => n === name)) kind = "font-size";
+  else if (spacingCandidates(groundTruth.tokens).some(([n]) => n === name)) kind = "spacing";
+  if (kind === null) return null;
+  const { tokenRef: _ref, ...rest } = usage;
+  void _ref;
+  return { ...rest, kind, severity: "match", nearestToken: name };
+}
+
 export function diffUsages(usages: RawUsage[], groundTruth: GroundTruth): Finding[] {
   const comparableKinds = new Set(
     (["color", "font-size", "spacing", "motion"] as const).filter((kind) => hasTokensFor(kind, groundTruth))
   );
-  return usages.filter((usage) => comparableKinds.has(usage.kind)).map((usage) => {
+  const refs = usages.filter((usage) => usage.tokenRef).map((usage) => diffTokenRef(usage, groundTruth));
+  const literals = usages.filter(isLiteral).filter((usage) => comparableKinds.has(usage.kind)).map((usage) => {
     if (usage.kind === "color") return diffColor(usage, groundTruth.tokens);
     if (usage.kind === "motion") return diffMotion(usage, groundTruth.motion);
     if (usage.kind === "font-size") return diffLength(usage, fontSizeCandidates(groundTruth.tokens));
     return diffLength(usage, spacingCandidates(groundTruth.tokens));
   });
+  return [...literals, ...refs.filter((f): f is Finding => f !== null)];
 }

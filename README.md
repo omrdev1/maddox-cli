@@ -198,6 +198,8 @@ This is a real edit to your working tree, not a dry run — review the diff (`gi
 
 `match` counts fully, `near-miss` counts half (it drifted, but is still recognizably close to a real token), `unrecognized` and a missing required state count for nothing. A scan with zero checks scores 100.
 
+Using a token by name counts as a match: `var(--color-paper)`, including inside Tailwind brackets such as `text-[length:var(--text-sm)]`. References to variables that aren't design tokens (Tailwind's own `--tw-*`, for example) aren't counted either way, and a variable defined from another (`--surface: var(--color-paper)`) is a definition, not a use. So replacing drifted values with their tokens, by hand or with `--apply-fixes`, raises the score.
+
 ## Programmatic use: route mapping
 
 The CLI's own text/markdown/JSON output stays a flat file:line list — the right shape for a PR comment or a CI log. If you're building your own dashboard or report on top of this package, `fileToRoute(file)` and `groupByRoute(findings)` are also exported for grouping findings by the actual Next.js App Router route a file belongs to, rather than its raw path:
