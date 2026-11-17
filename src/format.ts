@@ -40,10 +40,76 @@ const MARKER = "<!-- maddox-engine-drift-report -->";
 const MAX_NEAR_MISS_ROWS = 15;
 const MAX_OTHER_ROWS = 100;
 
+interface ComparedFinding {
+  file: string;
+  line: number;
+  kind: string;
+  rawValue: string;
+  severity: string;
+  suggestion?: string | null;
+}
+
+/** What Maddox Cloud returns for a branch or PR scan (paid plans). */
+export type ScanComparison =
+  | { available: false }
+  | {
+      available: true;
+      baselineBranch: string;
+      baseline: { runId: string; createdAt: string; commitSha: string | null } | null;
+      added: number;
+      fixed: number;
+      addedFindings: ComparedFinding[];
+      fixedFindings: ComparedFinding[];
+    };
+
 export interface MarkdownOptions {
   // Set only when the run was uploaded to Maddox Cloud, so the comment never
   // links to a dashboard run that does not exist.
   dashboardUrl?: string;
+  comparison?: ScanComparison | null;
+}
+
+const MAX_ADDED_ROWS = 15;
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+
+function comparisonMarkdown(c: ScanComparison): string[] {
+  if (!c.available) {
+    return [
+      "> See exactly which drifts this pull request adds and fixes compared with your main branch: [available on Team and Scale](https://www.maddoxengine.com/pricing).",
+      "",
+    ];
+  }
+  const branch = `\`${c.baselineBranch}\``;
+  if (!c.baseline) {
+    return [
+      `> No scan of ${branch} yet, so there is nothing to compare with. Run Maddox on pushes to ${branch} as well as on pull requests to see what each PR adds.`,
+      "",
+    ];
+  }
+  if (c.added === 0) {
+    const fixedNote = c.fixed > 0 ? ` and fixes **${c.fixed}**` : "";
+    return [`### ✅ No new drift compared with ${branch}`, "", `This PR introduces no new drift${fixedNote}.`, ""];
+  }
+  const lines = [
+    `### This PR adds **${c.added}** new drift${c.added === 1 ? "" : "s"} and fixes **${c.fixed}** compared with ${branch}`,
+    "",
+    "| Location | Kind | Found | Replace with |",
+    "|---|---|---|---|",
+  ];
+  for (const f of c.addedFindings.slice(0, MAX_ADDED_ROWS)) {
+    lines.push(`| \`${f.file}:${f.line}\` | ${f.kind} | \`${f.rawValue}\` | ${f.suggestion ? `\`${f.suggestion}\`` : "-"} |`);
+  }
+  if (c.added > MAX_ADDED_ROWS) lines.push(`| | ${plural(c.added - MAX_ADDED_ROWS, "more new drift")} not shown | | |`);
+  lines.push("");
+  return lines;
+}
+
+/** One-line terminal summary of a comparison, or undefined when there is none. */
+export function comparisonText(c: ScanComparison | null | undefined): string | undefined {
+  if (!c) return undefined;
+  if (!c.available) return "Compare against your main branch with a Team or Scale plan.";
+  if (!c.baseline) return `No scan of ${c.baselineBranch} yet to compare with.`;
+  return `Compared with ${c.baselineBranch}: ${plural(c.added, "new drift")}, ${c.fixed} fixed.`;
 }
 
 function scoreBadge(score: number): string {
@@ -69,6 +135,8 @@ export function toMarkdown(summary: ScanSummary, options: MarkdownOptions = {}):
     `Scanned **${summary.filesScanned}** files, **${total}** checks.`,
     "",
   ];
+
+  if (options.comparison) lines.push(...comparisonMarkdown(options.comparison));
 
   if (nearMisses.length === 0 && others.length === 0) {
     lines.push("No drift found. Every checked value matches the design system.", "");

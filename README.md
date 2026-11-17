@@ -66,7 +66,7 @@ const brand = "#123456"; // maddox-ignore
 
 ### Maddox Cloud (optional)
 
-Local scans are free, open source and unlimited. To keep scan history, get automated PR comments and use team dashboards, connect to [Maddox Cloud](https://www.maddoxengine.com) with an API key:
+Local scans, `--apply-fixes` and the GitHub Action's PR comments are free, open source and unlimited. To keep scan history and trends, and (on Team and Scale) see exactly which drifts each pull request adds or fixes compared with your main branch, connect to [Maddox Cloud](https://www.maddoxengine.com) with an API key:
 
 ```bash
 export MADDOX_API_KEY=<your-key>
@@ -202,6 +202,23 @@ This repo is also a GitHub Action — `omrdev1/maddox-cli` — that runs a scan,
     github-token: ${{ secrets.GITHUB_TOKEN }}
     fail-below: "80"
 ```
+
+### Comparing pull requests with main (Team and Scale)
+
+With an `api-key`, each uploaded scan records its branch, commit and pull request. A pull request scan is then compared with the latest scan of its base branch, and the PR comment leads with what changed:
+
+> **This PR adds 2 new drifts and fixes 1 compared with `main`**, followed by a table of the new ones.
+
+Values are matched by file, kind and value, not line number, so moving code around is not reported as new drift. For this to work, run the Action on pushes to your main branch as well as on pull requests, so there is a baseline to compare with:
+
+```yaml
+on:
+  pull_request:
+  push:
+    branches: [main]
+```
+
+Outside GitHub Actions, the CLI reads the branch and commit from the local git checkout. In other CI systems, set `MADDOX_BRANCH`, `MADDOX_BASE_BRANCH` and `MADDOX_COMMIT_SHA`.
 
 Inputs:
 

@@ -12,15 +12,17 @@ import {
   loadGroundTruthWithFigma,
   loadStateContract,
 } from "./core.js";
-import { dashboardRunUrl, summarize, toJson, toMarkdown, toText, type ScanSummary } from "./format.js";
+import { comparisonText, dashboardRunUrl, summarize, toJson, toMarkdown, toText, type ScanComparison, type ScanSummary } from "./format.js";
+import { detectGitContext, type GitContext } from "./gitContext.js";
 
 async function uploadResult(
   apiUrl: string,
   apiKey: string,
   projectName: string,
   summary: ScanSummary,
-  source: "cli" | "github_action"
-): Promise<string | undefined> {
+  source: "cli" | "github_action",
+  git: GitContext
+): Promise<{ runUrl: string; comparison: ScanComparison | null } | undefined> {
   const response = await fetch(`${apiUrl}/api/scans`, {
     method: "POST",
     headers: {
@@ -32,6 +34,7 @@ async function uploadResult(
       source,
       filesScanned: summary.filesScanned,
       findings: summary.findings,
+      ...(git.branch ? { git } : {}),
     }),
   });
 
@@ -46,9 +49,13 @@ async function uploadResult(
     return undefined;
   }
 
-  const runUrl = dashboardRunUrl(apiUrl, await response.json().catch(() => null));
+  const body = await response.json().catch(() => null);
+  const runUrl = dashboardRunUrl(apiUrl, body);
+  const comparison = (body?.comparison ?? null) as ScanComparison | null;
   console.error(`\nUploaded. View the run at ${runUrl}`);
-  return runUrl;
+  const compared = comparisonText(comparison);
+  if (compared) console.error(compared);
+  return { runUrl, comparison };
 }
 
 function flagValue(name: string): string | undefined {
@@ -178,20 +185,27 @@ async function main() {
   const apiUrl = process.env.MADDOX_API_URL ?? "https://www.maddoxengine.com";
 
   // Upload first so the markdown report can link to the run only if it exists.
-  const runUrl = apiKey
-    ? await uploadResult(apiUrl, apiKey, projectName, summary, process.env.GITHUB_ACTIONS ? "github_action" : "cli")
+  const uploaded = apiKey
+    ? await uploadResult(
+        apiUrl,
+        apiKey,
+        projectName,
+        summary,
+        process.env.GITHUB_ACTIONS ? "github_action" : "cli",
+        url ? {} : detectGitContext(targetDir)
+      )
     : undefined;
 
   if (format === "json") {
     console.log(toJson(summary));
   } else if (format === "markdown") {
-    console.log(toMarkdown(summary, { dashboardUrl: runUrl }));
+    console.log(toMarkdown(summary, { dashboardUrl: uploaded?.runUrl, comparison: uploaded?.comparison }));
   } else {
     console.log(toText(summary));
   }
 
   if (!apiKey && format === "text") {
-    console.log("\n💡 Tip: Connect to Maddox Cloud for automated PR comments and team dashboards: npx maddox-engine --api-key <key>");
+    console.log("\n💡 Tip: connect to Maddox Cloud for scan history, and see what each pull request adds or fixes compared with main: npx maddox-engine --api-key <key>");
   }
 
   const failBelowRaw = flagValue("--fail-below");
