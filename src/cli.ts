@@ -40,16 +40,15 @@ async function uploadResult(
 
   // Cloud problems never fail a scan: local results are already printed and
   // --fail-below still decides the exit code.
-  if (response.status === 429) {
-    console.error("\n⚠️ Cloud limit reached (5 scans/month). Upgrade at maddoxengine.com/pricing for unlimited CI scans.");
-    return undefined;
-  }
+  const body = await response.json().catch(() => null);
   if (response.status !== 201) {
-    console.error(`\nCloud upload failed (${response.status}). Local results above are unaffected.`);
+    // Plan limits (429 monthly uploads, 403 projects) come with a readable reason from the server.
+    const reason = typeof body?.error === "string" ? body.error : `Cloud upload failed (${response.status}).`;
+    const prefix = response.status === 429 || response.status === 403 ? "⚠️ " : "";
+    console.error(`\n${prefix}${reason} Local results above are unaffected.`);
     return undefined;
   }
 
-  const body = await response.json().catch(() => null);
   const runUrl = dashboardRunUrl(apiUrl, body);
   const comparison = (body?.comparison ?? null) as ScanComparison | null;
   console.error(`\nUploaded. View the run at ${runUrl}`);

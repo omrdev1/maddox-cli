@@ -73,7 +73,7 @@ export MADDOX_API_KEY=<your-key>
 npx maddox-engine ./src ./src/app/globals.css
 ```
 
-Uploading never changes the scan result or its exit code. If your monthly limit is reached or the upload fails, the CLI prints a message and carries on, so `--fail-below` still decides whether the build passes. Without a key, nothing is sent over the network. The free plan includes 5 uploaded scans a month; Team and Scale are unlimited, see [pricing](https://www.maddoxengine.com/pricing). `MADDOX_API_URL` overrides the endpoint.
+Uploading never changes the scan result or its exit code. If your monthly limit is reached or the upload fails, the CLI prints a message and carries on, so `--fail-below` still decides whether the build passes. Without a key, nothing is sent over the network. The free plan includes 1 project, 5 uploaded scans a month and 30 days of history; Team includes 5 projects and 12 months, Scale is unlimited. See [pricing](https://www.maddoxengine.com/pricing). If an upload is over a plan limit, the CLI prints the reason and carries on. `MADDOX_API_URL` overrides the endpoint.
 
 ### Example
 
