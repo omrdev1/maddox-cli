@@ -60,6 +60,41 @@ cat proposed.css | npx maddox-engine check app/styles/card.css --stdin --format 
 
 Checks one file, or proposed content passed on stdin, against the tokens in `maddox.config.json`, with the same rules as a full scan (test, story and ignored files are skipped). It prints only drift, with the nearest token and suggested fix. Local only: it never uploads and never reads your API key. Exit codes: `0` no drift or the file is skipped, `1` drift found, `2` the check could not run.
 
+### Agent and commit hooks
+
+#### Claude Code (`PostToolUse`)
+
+Runs after `Edit`, `Write` or `MultiEdit` and tells the agent only about newly introduced drift in that edit (never repeating the same finding in a session, and staying silent on non-style files or missing config). Add to `.claude/settings.json` (or `.claude/settings.local.json`) in a project with `maddox.config.json`:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "npx maddox-engine hook claude-code"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Pass `--insist` (`maddox hook claude-code --insist`) to return a `"block"` decision so Claude addresses the drift before continuing. For faster runs, install `maddox-engine` locally and point `"command"` at `./node_modules/.bin/maddox hook claude-code`.
+
+#### Git pre-commit
+
+Checks staged files against `maddox.config.json` and exits `1` when a commit adds new drift over `HEAD` (pass `--all` to fail on any existing drift in staged files). In `.git/hooks/pre-commit` (`chmod +x .git/hooks/pre-commit`):
+
+```bash
+#!/bin/sh
+npx maddox-engine hook pre-commit
+```
+
 Requires Node 20 or later.
 
 ### What counts as a finding

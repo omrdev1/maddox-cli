@@ -134,9 +134,41 @@ async function checkCommand(args: string[]) {
   process.exit(result.status === "error" ? SCAN_ERROR : result.status === "checked" && result.findings.length > 0 ? 1 : 0);
 }
 
+// `maddox hook claude-code [--insist]`: Claude Code PostToolUse adapter. Reads
+// the hook payload on stdin and prints only the hook's JSON. Always exits 0 and
+// stays silent on anything unexpected, so it can never break an agent session.
+// `maddox hook pre-commit [--all]`: blocks a commit that adds drift (exit 1).
+async function hookCommand(args: string[]) {
+  const target = args[0];
+  if (target === "claude-code") {
+    try {
+      const { claudeCodeHook } = await import("./hook.js");
+      const out = claudeCodeHook(await readStdin(), { insist: args.includes("--insist") });
+      if (out) process.stdout.write(JSON.stringify(out));
+    } catch {
+      // Quiet by design: an internal failure must not reach the agent.
+    }
+    process.exit(0);
+  }
+  if (target === "pre-commit") {
+    const { preCommit } = await import("./hook.js");
+    let result;
+    try {
+      result = preCommit({ cwd: process.cwd(), all: args.includes("--all") });
+    } catch (err) {
+      console.error(`Maddox pre-commit could not run (not blocking): ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(0);
+    }
+    if (result.output) console.error(result.output);
+    process.exit(result.exitCode);
+  }
+  console.error("Usage: maddox hook claude-code [--insist] | maddox hook pre-commit [--all]");
+  process.exit(SCAN_ERROR);
+}
+
 // Names kept for upcoming subcommands, so their meaning never changes under
 // someone's existing script. A folder with one of these names is scanned as ./name.
-const RESERVED_SUBCOMMANDS = new Set(["hook", "mcp", "init"]);
+const RESERVED_SUBCOMMANDS = new Set(["mcp", "init"]);
 
 function packageVersion(): string {
   try {
@@ -155,6 +187,7 @@ async function main() {
   // Subcommands come first. A folder that shares a subcommand's name can be
   // scanned as ./check.
   if (first === "check") return checkCommand(process.argv.slice(3));
+  if (first === "hook") return hookCommand(process.argv.slice(3));
   if (first && RESERVED_SUBCOMMANDS.has(first)) {
     console.error(`"maddox ${first}" is not available in this version yet. To scan a folder named ${first}, use ./${first}.`);
     process.exit(SCAN_ERROR);
@@ -207,7 +240,11 @@ async function main() {
         "  --suggest-tokens [--min-uses N] lists colours used N or more times (default 5) that your theme " +
         "doesn't name, as a ready-to-paste @theme block with the score you'd get by adding them.\n" +
         "  maddox check <file> [--stdin] [--format text|json] checks one file (or proposed content on stdin) " +
-        "against the config's tokens. Local only: no upload, no API key."
+        "against the config's tokens. Local only: no upload, no API key.\n" +
+        "  maddox hook claude-code [--insist] reads a Claude Code PostToolUse payload on stdin and reports " +
+        "new drift back to the agent (`--insist` asks Claude Code to address it before continuing).\n" +
+        "  maddox hook pre-commit [--all] blocks git commits that add drift in staged files (`--all` checks " +
+        "all drift in staged files, not only what the commit adds)."
     );
     process.exit(wantsHelp ? 0 : SCAN_ERROR);
   }
