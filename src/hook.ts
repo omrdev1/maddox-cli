@@ -9,8 +9,7 @@ import { parseAlpha, parseColor } from "./color.js";
 import type { Finding } from "./types.js";
 
 // Agent and commit hooks over `maddox check`. Local only: no network, no API
-// key, and nothing here writes to the project. See
-// docs/plans/2026-11-17-agent-native-layer.md (Phase 1).
+// key, and nothing here writes to the project.
 
 /** Runs git and returns stdout, or null when the command fails (not a repo, path not in HEAD, and so on). */
 export type GitRunner = (args: string[], cwd: string) => string | null;
