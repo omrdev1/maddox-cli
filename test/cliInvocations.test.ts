@@ -68,12 +68,15 @@ test("a broken config with a flags-only call exits 2 with the config error", () 
     assert.match(r.err, /Unknown key "sauce"/);
   }));
 
-test("./check scans a folder named check; bare reserved names are refused, not scanned", () =>
+test("./check scans a folder named check; mcp and init subcommands respond to --help", () =>
   withProject(null, (dir) => {
     assert.equal(files(run(dir, ["./check", "app/theme.css", "--format", "json"]).out), 1);
-    const r = run(dir, ["mcp", "app/theme.css"]);
-    assert.equal(r.code, 2);
-    assert.match(r.err, /use \.\/mcp/);
+    const mcpHelp = run(dir, ["mcp", "--help"]);
+    assert.equal(mcpHelp.code, 0);
+    assert.match(mcpHelp.out, /get_design_tokens/);
+    const initHelp = run(dir, ["init", "--help"]);
+    assert.equal(initHelp.code, 0);
+    assert.match(initHelp.out, /--dry-run/);
   }));
 
 test("--help and --version never scan, even with a config present", () =>

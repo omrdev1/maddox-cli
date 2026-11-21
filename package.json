@@ -1,6 +1,6 @@
 {
   "name": "maddox-engine",
-  "version": "0.11.0",
+  "version": "0.12.0",
   "description": "Scans source code or a live deployed page for design-token, motion, and component-state drift against your own design system — the same engine behind Maddox Engine's CI checks.",
   "license": "MIT",
   "type": "module",
@@ -48,7 +48,9 @@
     "prepublishOnly": "npm run lint && npm test && npm run build",
     "prepare": "npm run build"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2"
+  },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "tsx": "^4.19.0",

@@ -95,6 +95,36 @@ Checks staged files against `maddox.config.json` and exits `1` when a commit add
 npx maddox-engine hook pre-commit
 ```
 
+#### One-command setup (`maddox init`)
+
+Run `maddox init` in your project root to detect your `@theme` or `:root` CSS file, write `maddox.config.json`, wire the Claude Code `PostToolUse` hook (`.claude/settings.local.json` or `.claude/settings.json`), add the Maddox MCP server to `.mcp.json`, and optionally append a short design-token rules snippet to `CLAUDE.md`, `AGENTS.md`, or `.cursor/rules/maddox.mdc`:
+
+```bash
+npx -y maddox-engine init --dry-run   # preview exact changes first
+npx -y maddox-engine init             # interactive setup (never overwrites existing entries)
+```
+
+#### MCP server (Claude Code, Cursor, Windsurf, Codex, Antigravity)
+
+`maddox mcp` runs a read-only local stdio MCP server so any MCP-capable coding agent can look up your real design tokens before writing styles and verify files afterward. Add to `.mcp.json` (or your IDE's MCP settings):
+
+```json
+{
+  "mcpServers": {
+    "maddox": {
+      "command": "npx",
+      "args": ["-y", "maddox-engine", "mcp"]
+    }
+  }
+}
+```
+
+Tools exposed (all read-only, 100% local, zero network calls):
+- `get_design_tokens` — lists project color, font-size, spacing, and motion tokens from `maddox.config.json`.
+- `find_token` — checks a raw value (e.g. `#e05244` or `19px`) and returns the exact match or nearest token and fix.
+- `check_code` — checks a single file (or proposed file content) for drift before writing.
+- `scan_project` — scans the project (or specific paths) and returns the local health score, counts, and top findings.
+
 Requires Node 20 or later.
 
 ### What counts as a finding

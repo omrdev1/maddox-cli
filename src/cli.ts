@@ -166,9 +166,85 @@ async function hookCommand(args: string[]) {
   process.exit(SCAN_ERROR);
 }
 
+// `maddox mcp [--root <dir>]`: starts the read-only local MCP stdio server.
+// Dynamically imports ./mcp.js so `check` and `hook` never load the MCP SDK.
+async function mcpCommand(args: string[]) {
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(
+      "Usage: maddox mcp [--root <project-dir>]\n" +
+        "  Starts the read-only local Maddox MCP server over stdio.\n" +
+        "  Exposes: get_design_tokens, find_token, check_code, scan_project."
+    );
+    process.exit(0);
+  }
+  const rootAt = args.indexOf("--root");
+  const rootDir = rootAt !== -1 ? args[rootAt + 1] : undefined;
+  try {
+    const { startMaddoxMcpServer } = await import("./mcp.js");
+    await startMaddoxMcpServer({ rootDir, version: packageVersion() });
+  } catch (err) {
+    console.error(`Maddox MCP server could not start: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(SCAN_ERROR);
+  }
+}
+
+// `maddox init [--dry-run] [--yes] [--theme <css>] [--source <dir>]`: sets up
+// maddox.config.json, Claude Code hook, .mcp.json, and agent rules snippet.
+async function initCommand(args: string[]) {
+  if (args.includes("--help") || args.includes("-h")) {
+    console.log(
+      "Usage: maddox init [--dry-run] [--yes] [--theme <css>] [--source <dir>] " +
+        "[--claude-settings local|shared|skip] [--no-mcp] [--rules claude|agents|cursor|skip]\n" +
+        "  Detects your @theme / :root CSS tokens and sets up maddox.config.json,\n" +
+        "  Claude Code PostToolUse hook, .mcp.json, and an optional rules snippet.\n" +
+        "  Never overwrites existing entries. Use --dry-run to preview without writing."
+    );
+    process.exit(0);
+  }
+  const argVal = (flag: string): string | undefined => {
+    const i = args.indexOf(flag);
+    return i !== -1 ? args[i + 1] : undefined;
+  };
+  const claudeRaw = argVal("--claude-settings");
+  const claudeSettings =
+    claudeRaw === "local" || claudeRaw === "shared" || claudeRaw === "skip" ? claudeRaw : undefined;
+  if (claudeRaw !== undefined && !claudeSettings) {
+    console.error(`Invalid --claude-settings "${claudeRaw}". Use: local, shared, or skip.`);
+    process.exit(SCAN_ERROR);
+  }
+  const rulesRaw = argVal("--rules");
+  const rules =
+    rulesRaw === "claude" || rulesRaw === "agents" || rulesRaw === "cursor" || rulesRaw === "skip"
+      ? rulesRaw
+      : undefined;
+  if (rulesRaw !== undefined && !rules) {
+    console.error(`Invalid --rules "${rulesRaw}". Use: claude, agents, cursor, or skip.`);
+    process.exit(SCAN_ERROR);
+  }
+
+  try {
+    const { formatInitPlan, runInitInteractive } = await import("./init.js");
+    const result = await runInitInteractive({
+      cwd: process.cwd(),
+      dryRun: args.includes("--dry-run"),
+      yes: args.includes("--yes") || args.includes("-y"),
+      theme: argVal("--theme"),
+      source: argVal("--source"),
+      claudeSettings,
+      mcp: !args.includes("--no-mcp"),
+      rules,
+    });
+    console.log(formatInitPlan(result));
+    process.exit(result.theme ? 0 : SCAN_ERROR);
+  } catch (err) {
+    console.error(`Maddox init failed: ${err instanceof Error ? err.message : String(err)}`);
+    process.exit(SCAN_ERROR);
+  }
+}
+
 // Names kept for upcoming subcommands, so their meaning never changes under
 // someone's existing script. A folder with one of these names is scanned as ./name.
-const RESERVED_SUBCOMMANDS = new Set(["mcp", "init"]);
+const RESERVED_SUBCOMMANDS = new Set<string>();
 
 function packageVersion(): string {
   try {
@@ -188,6 +264,8 @@ async function main() {
   // scanned as ./check.
   if (first === "check") return checkCommand(process.argv.slice(3));
   if (first === "hook") return hookCommand(process.argv.slice(3));
+  if (first === "mcp") return mcpCommand(process.argv.slice(3));
+  if (first === "init") return initCommand(process.argv.slice(3));
   if (first && RESERVED_SUBCOMMANDS.has(first)) {
     console.error(`"maddox ${first}" is not available in this version yet. To scan a folder named ${first}, use ./${first}.`);
     process.exit(SCAN_ERROR);
@@ -244,7 +322,11 @@ async function main() {
         "  maddox hook claude-code [--insist] reads a Claude Code PostToolUse payload on stdin and reports " +
         "new drift back to the agent (`--insist` asks Claude Code to address it before continuing).\n" +
         "  maddox hook pre-commit [--all] blocks git commits that add drift in staged files (`--all` checks " +
-        "all drift in staged files, not only what the commit adds)."
+        "all drift in staged files, not only what the commit adds).\n" +
+        "  maddox mcp [--root <dir>] starts a read-only local MCP server over stdio (get_design_tokens, " +
+        "find_token, check_code, scan_project).\n" +
+        "  maddox init [--dry-run] [--yes] detects your theme CSS and wires maddox.config.json, Claude Code hook, " +
+        ".mcp.json, and agent rules without overwriting existing entries."
     );
     process.exit(wantsHelp ? 0 : SCAN_ERROR);
   }
