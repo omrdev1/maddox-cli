@@ -112,8 +112,13 @@ export function comparisonText(c: ScanComparison | null | undefined): string | u
   return `Compared with ${c.baselineBranch}: ${plural(c.added, "new drift")}, ${c.fixed} fixed.`;
 }
 
+/** Score bands shared with the dashboard: 85 and above is green, 60 to 84 is amber, below 60 is red. */
+export function scoreBadgeColor(score: number): "brightgreen" | "yellow" | "red" {
+  return score >= 85 ? "brightgreen" : score >= 60 ? "yellow" : "red";
+}
+
 function scoreBadge(score: number): string {
-  const color = score >= 90 ? "brightgreen" : score >= 70 ? "yellow" : "red";
+  const color = scoreBadgeColor(score);
   return `![Drift health ${score}/100](https://img.shields.io/badge/drift%20health-${score}%2F100-${color})`;
 }
 
