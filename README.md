@@ -86,6 +86,19 @@ Runs after `Edit`, `Write` or `MultiEdit` and tells the agent only about newly i
 
 Pass `--insist` (`maddox hook claude-code --insist`) to return a `"block"` decision so Claude addresses the drift before continuing. For faster runs, install `maddox-engine` locally and point `"command"` at `./node_modules/.bin/maddox hook claude-code`.
 
+#### Speed
+
+Measured on an Apple M1 Pro with Node 24, 40 runs each after warm-up, using the local install (`node_modules/.bin/maddox`). Bare Node startup is about 35 ms of every figure.
+
+| Command | Median | p95 |
+|---|---|---|
+| `maddox check <file>` | 53 ms | 55 ms |
+| `hook claude-code`, an Edit | 57 to 61 ms | 60 to 64 ms |
+| `hook claude-code`, a Write over a committed file that has drift | 147 to 166 ms | 151 to 175 ms |
+| `hook pre-commit`, one staged file | 431 ms | 440 ms |
+
+A Write over a committed file asks git for the committed version, and the pre-commit hook does that for every staged file, which is where their extra time goes. Running a hook through `npx -y maddox-engine ...`, as `maddox init` writes it, adds npx's own startup, about 0.4 to 0.6 seconds per run; installing `maddox-engine` in the project and pointing the hook at `./node_modules/.bin/maddox` avoids that. Reproduce the table with `npm run build && node scripts/bench.mjs`.
+
 #### Git pre-commit
 
 Checks staged files against `maddox.config.json` and exits `1` when a commit adds new drift over `HEAD` (pass `--all` to fail on any existing drift in staged files). In `.git/hooks/pre-commit` (`chmod +x .git/hooks/pre-commit`):
