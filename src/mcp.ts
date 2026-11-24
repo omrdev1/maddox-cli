@@ -113,7 +113,7 @@ function collectCandidateFiles(dir: string, out: string[], deadlineMs: number): 
 }
 
 export function createMaddoxMcpServer(options: McpServerOptions = {}): Server {
-  const version = options.version ?? "0.12.0";
+  const version = options.version ?? "0.13.0";
   const fallbackRoot = resolve(options.rootDir ?? process.cwd());
   let cache: CachedProject | null = null;
 
