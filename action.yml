@@ -121,7 +121,7 @@ runs:
 
     - name: Post or update PR comment
       if: github.event.pull_request.number
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       env:
         MADDOX_COMMENT_BODY: ${{ steps.run-scan.outputs.comment_body }}
       with:
