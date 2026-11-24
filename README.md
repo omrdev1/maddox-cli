@@ -327,14 +327,28 @@ import { fileToRoute, groupByRoute, diffUsages, healthScore } from "maddox-engin
 This repo is also a GitHub Action — `omrdev1/maddox-cli` — that runs a scan, posts the markdown report as a PR comment (updating the same comment on later pushes rather than piling up new ones), and optionally fails the build via `fail-below`.
 
 ```yaml
-- uses: actions/checkout@v4
-- uses: omrdev1/maddox-cli@v0
-  with:
-    target-dir: src
-    theme-css: src/app/globals.css
-    github-token: ${{ secrets.GITHUB_TOKEN }}
-    fail-below: "80"
+name: Drift check
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  maddox:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: omrdev1/maddox-cli@v0
+        with:
+          target-dir: src
+          theme-css: src/app/globals.css
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fail-below: "80"
 ```
+
+`pull-requests: write` lets the Action post its comment. Pull requests from forks always get a read-only token, so no comment is posted there; the scan still runs and `fail-below` still decides whether the check passes. The Action installs its own pinned dependencies from a lockfile and runs no install scripts.
 
 ### Comparing pull requests with main (Team and Scale)
 
