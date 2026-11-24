@@ -51,51 +51,54 @@ runs:
     - name: Install maddox
       shell: bash
       working-directory: ${{ github.action_path }}
-      # Installs build tools and compiles dist/ (the package's prepare
-      # script), so the Action runs the same JavaScript that npm ships.
-      run: npm install --no-save
+      # Installs exactly the versions in package-lock.json (npm ci fails if
+      # the lockfile and package.json disagree), runs no dependency install
+      # scripts, then compiles dist/ so the Action runs the same JavaScript
+      # that npm ships.
+      run: npm ci --ignore-scripts --no-audit --no-fund && npm run build
 
     - name: Run Maddox scan
       id: run-scan
       shell: bash
+      # Every input reaches the script as an environment variable and is
+      # always quoted. Nothing from the workflow is pasted into the shell
+      # text, so a value such as a branch name or a path with spaces or
+      # quotes cannot change what runs.
       env:
         MADDOX_API_KEY: ${{ inputs.api-key }}
         MADDOX_API_URL: ${{ inputs.api-url }}
         MADDOX_FIGMA_TOKEN: ${{ inputs.figma-token-type == 'pat' && inputs.figma-token || '' }}
         MADDOX_FIGMA_OAUTH_TOKEN: ${{ inputs.figma-token-type == 'oauth' && inputs.figma-token || '' }}
+        ACTION_PATH: ${{ github.action_path }}
+        IN_TARGET_DIR: ${{ inputs.target-dir }}
+        IN_THEME_CSS: ${{ inputs.theme-css }}
+        IN_MOTION_TOKENS: ${{ inputs.motion-tokens }}
+        IN_STATES: ${{ inputs.states }}
+        IN_TOKENS_STUDIO: ${{ inputs.tokens-studio }}
+        IN_URL: ${{ inputs.url }}
+        IN_FIGMA_FILE: ${{ inputs.figma-file }}
+        IN_FAIL_BELOW: ${{ inputs.fail-below }}
       run: |
-        MOTION_FLAG=""
-        if [ -n "${{ inputs.motion-tokens }}" ]; then
-          MOTION_FLAG="--motion ${{ inputs.motion-tokens }}"
-        fi
-
-        STATES_FLAG=""
-        if [ -n "${{ inputs.states }}" ]; then
-          STATES_FLAG="--states ${{ inputs.states }}"
-        fi
-
-        TOKENS_STUDIO_FLAG=""
-        if [ -n "${{ inputs.tokens-studio }}" ]; then
-          TOKENS_STUDIO_FLAG="--tokens-studio ${{ inputs.tokens-studio }}"
-        fi
-
-        URL_FLAG=""
-        if [ -n "${{ inputs.url }}" ]; then
-          URL_FLAG="--url ${{ inputs.url }}"
-        fi
-
-        FIGMA_FLAG=""
-        if [ -n "${{ inputs.figma-file }}" ]; then
-          FIGMA_FLAG="--figma-file ${{ inputs.figma-file }}"
-        fi
-
         # target-dir is a required positional arg in the CLI's own arg
         # parsing even in --url mode (only its *value* is ignored there) —
         # pass a harmless placeholder so url-only usage doesn't also have
         # to set target-dir just to satisfy argv[2].
-        TARGET_DIR="${{ inputs.target-dir }}"
-        if [ -z "$TARGET_DIR" ]; then
-          TARGET_DIR="-"
+        args=("${IN_TARGET_DIR:--}" "$IN_THEME_CSS")
+
+        if [ -n "$IN_MOTION_TOKENS" ]; then args+=(--motion "$IN_MOTION_TOKENS"); fi
+        if [ -n "$IN_STATES" ]; then args+=(--states "$IN_STATES"); fi
+        if [ -n "$IN_TOKENS_STUDIO" ]; then args+=(--tokens-studio "$IN_TOKENS_STUDIO"); fi
+        if [ -n "$IN_URL" ]; then args+=(--url "$IN_URL"); fi
+        if [ -n "$IN_FIGMA_FILE" ]; then args+=(--figma-file "$IN_FIGMA_FILE"); fi
+
+        args+=(--format markdown)
+
+        if [ -n "$IN_FAIL_BELOW" ]; then
+          if ! [[ "$IN_FAIL_BELOW" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+            echo "::error::Maddox: fail-below must be a number from 0 to 100."
+            exit 1
+          fi
+          args+=(--fail-below "$IN_FAIL_BELOW")
         fi
 
         # Run once, capture both the markdown report (for the PR comment)
@@ -104,17 +107,7 @@ runs:
         # before the build is allowed to fail, otherwise a reviewer sees
         # a red check with no explanation of what drifted.
         set +e
-        node "${{ github.action_path }}/dist/cli.js" \
-          "$TARGET_DIR" \
-          "${{ inputs.theme-css }}" \
-          $MOTION_FLAG \
-          $STATES_FLAG \
-          $TOKENS_STUDIO_FLAG \
-          $URL_FLAG \
-          $FIGMA_FLAG \
-          --format markdown \
-          ${{ inputs.fail-below && format('--fail-below {0}', inputs.fail-below) || '' }} \
-          > maddox-report.md 2> maddox-scan.log
+        node "$ACTION_PATH/dist/cli.js" "${args[@]}" > maddox-report.md 2> maddox-scan.log
         SCAN_EXIT=$?
         set -e
 
@@ -128,28 +121,37 @@ runs:
 
     - name: Post or update PR comment
       if: github.event.pull_request.number
-      uses: actions/github-script@v7
+      uses: actions/github-script@v8
       env:
         MADDOX_COMMENT_BODY: ${{ steps.run-scan.outputs.comment_body }}
       with:
         github-token: ${{ inputs.github-token }}
         script: |
-          const { owner, repo, number } = context.issue;
-          if (!number) return;
+          try {
+            const { owner, repo, number } = context.issue;
+            if (!number) return;
 
-          const body = process.env.MADDOX_COMMENT_BODY;
-          if (!body) {
-            core.warning('Maddox: comment body is empty, skipping PR comment.');
-            return;
-          }
+            const body = process.env.MADDOX_COMMENT_BODY;
+            if (!body) {
+              core.warning('Maddox: comment body is empty, skipping PR comment.');
+              return;
+            }
 
-          const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number, per_page: 100 });
-          const existing = comments.find(c => c.body && c.body.includes('maddox-engine-drift-report'));
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number: number, per_page: 100 });
+            const existing = comments.find(c => c.body && c.body.includes('maddox-engine-drift-report'));
 
-          if (existing) {
-            await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
-          } else {
-            await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number: number, body });
+            }
+          } catch (error) {
+            core.warning(
+              `Maddox: could not post the PR comment (${error.status || 'error'}). ` +
+              'Pull requests from forks always get a read-only token, so no comment is posted there. ' +
+              'For other pull requests, add "permissions: pull-requests: write" to the workflow. ' +
+              'The scan result is not affected.'
+            );
           }
 
     # Exit 1: drift failed --fail-below or the workspace's central rules.
